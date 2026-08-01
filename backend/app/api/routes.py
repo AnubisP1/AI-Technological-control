@@ -7,6 +7,7 @@ from fastapi import APIRouter, UploadFile
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
 from app.domain.kd_review.review_model import KdReviewReport
+from app.domain.process_planning.print_card_model import PostprocessingCard, PrintProcessCard
 from app.domain.process_planning.route_card_model import RouteCard
 from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
 from app.infrastructure.cad.auto_view_detector import AutoViewDetector
@@ -14,11 +15,14 @@ from app.infrastructure.cad.regex_step_parser import RegexStepParser
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.nsi_db import NsiDatabase, build_database, connect
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
+from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanningLookup
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.infrastructure.worker_pool import run_heavy
 from app.services.kd_analysis_service import KdAnalysisService
 from app.services.kd_review_service import KdReviewService
+from app.services.print_card_generator import PrintCardGenerator
+from app.services.print_process_planning_service import PrintProcessPlanningService
 from app.services.process_planning_service import ProcessPlanningService
 from app.services.route_card_generator import RouteCardGenerator, parse_layout_columns
 
@@ -41,6 +45,15 @@ def _get_metal_db_path() -> Path:
     db_path = settings.database_dir / "metal.sqlite"
     if not db_path.exists():
         build_database(NsiDatabase.METAL, db_path)
+    return db_path
+
+
+def _get_additive_db_path() -> Path:
+    """Аналог _get_metal_db_path() для аддитивной НСИ (пластик)."""
+    settings = get_settings()
+    db_path = settings.database_dir / "additive.sqlite"
+    if not db_path.exists():
+        build_database(NsiDatabase.ADDITIVE, db_path)
     return db_path
 
 
@@ -251,3 +264,80 @@ async def generate_route_card(drawing: UploadFile) -> dict:
         planning_result, columns=columns, gost_form=gost_form
     )
     return _route_card_to_dict(route_card, planning_result.warnings)
+
+
+def _print_process_card_to_dict(card: PrintProcessCard) -> dict:
+    return {
+        "part_name": card.part_name,
+        "columns": list(card.columns),
+        "row": list(card.row.values),
+    }
+
+
+def _postprocessing_card_to_dict(card: PostprocessingCard) -> dict:
+    return {
+        "columns": list(card.columns),
+        "rows": [list(row.values) for row in card.rows],
+    }
+
+
+@router.post("/print/route-card")
+async def generate_print_route_card(
+    step_model: UploadFile,
+    am_technology_code: str,
+    material_group_code: str,
+) -> dict:
+    """Модуль 1.3 для пластиковых изделий (упрощённый автоподбор,
+    аддитивные технологии). В отличие от металла, на вход по ТЗ подаётся
+    только STEP-модель без чертежа — материал и технология печати не
+    извлекаются из документа, а указываются пользователем явно
+    (am_technology_code, напр. 'FDM'/'SLA'; material_group_code, напр.
+    'PETG'/'RESIN_STD').
+
+    Подбирает принтер и цепочку постобработки по правилам совместимости
+    additive-НСИ, генерирует карту техпроцесса печати и карту
+    постобработки по шаблонам am_document_template. Параметры печати
+    (высота слоя, время, расход материала) не рассчитываются — графы
+    остаются пустыми, не выдуманными.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        step_path = Path(tmp_dir) / (step_model.filename or "model.step")
+        step_path.write_bytes(await step_model.read())
+
+        step = await run_heavy(RegexStepParser().parse, step_path)
+
+    additive_db_path = _get_additive_db_path()
+    planning_service = PrintProcessPlanningService(SqlitePrintPlanningLookup(additive_db_path))
+    planning_result = planning_service.plan(
+        part_name=step.product_name or None,
+        am_technology_code=am_technology_code,
+        material_group_code=material_group_code,
+    )
+
+    connection = connect(additive_db_path)
+    try:
+        process_template = connection.execute(
+            "SELECT layout_schema FROM am_document_template WHERE code = 'PRINT_CARD'"
+        ).fetchone()
+        pp_template = connection.execute(
+            "SELECT layout_schema FROM am_document_template WHERE code = 'PP_CARD'"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    process_columns = (
+        parse_layout_columns(process_template["layout_schema"]) if process_template else ()
+    )
+    pp_columns = parse_layout_columns(pp_template["layout_schema"]) if pp_template else ()
+
+    generator = PrintCardGenerator()
+    process_card = generator.generate_process_card(planning_result, columns=process_columns)
+    postprocessing_card = generator.generate_postprocessing_card(
+        planning_result, columns=pp_columns
+    )
+
+    return {
+        "process_card": _print_process_card_to_dict(process_card),
+        "postprocessing_card": _postprocessing_card_to_dict(postprocessing_card),
+        "warnings": list(planning_result.warnings),
+    }
