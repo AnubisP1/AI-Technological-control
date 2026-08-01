@@ -77,3 +77,34 @@ export async function simulatePrintManufacturing({ stepModel, amTechnologyCode, 
   })
   return parseJsonOrThrow(response)
 }
+
+export async function assessQualityMetal({ drawing, referencePhoto, actualPhoto }) {
+  const form = new FormData()
+  form.append('drawing', drawing)
+  form.append('reference_photo', referencePhoto)
+  form.append('actual_photo', actualPhoto)
+  const response = await fetch(`${API_BASE}/quality/assess/metal`, { method: 'POST', body: form })
+  return parseJsonOrThrow(response)
+}
+
+export async function assessQualityPrint({
+  stepModel,
+  referencePhoto,
+  actualPhoto,
+  amTechnologyCode,
+  materialGroupCode,
+}) {
+  const form = new FormData()
+  form.append('step_model', stepModel)
+  form.append('reference_photo', referencePhoto)
+  form.append('actual_photo', actualPhoto)
+  const params = new URLSearchParams({
+    am_technology_code: amTechnologyCode,
+    material_group_code: materialGroupCode,
+  })
+  const response = await fetch(`${API_BASE}/quality/assess/print?${params}`, {
+    method: 'POST',
+    body: form,
+  })
+  return parseJsonOrThrow(response)
+}
