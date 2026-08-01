@@ -3,6 +3,7 @@ import './App.css'
 import Module1 from './Module1.jsx'
 import Module2 from './Module2.jsx'
 import Module3 from './Module3.jsx'
+import Module4 from './Module4.jsx'
 
 const NAV_ITEMS = [
   { id: 'module1', label: 'Анализ КД' },
@@ -11,7 +12,7 @@ const NAV_ITEMS = [
   { id: 'module4', label: 'Серийное производство' },
 ]
 
-const READY_MODULES = new Set(['module1', 'module2', 'module3'])
+const READY_MODULES = new Set(['module1', 'module2', 'module3', 'module4'])
 
 function App() {
   const [activeModule, setActiveModule] = useState(NAV_ITEMS[0].id)
@@ -59,6 +60,7 @@ function App() {
           />
         )}
         {activeModule === 'module3' && <Module3 pendingInput={pendingInput} />}
+        {activeModule === 'module4' && <Module4 />}
         {!READY_MODULES.has(activeModule) && (
           <section className="card">
             <p>Экран модуля будет реализован на соответствующей фазе (см. dev/PLAN.md).</p>
