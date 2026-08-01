@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   analyzeKd,
+  downloadKdReviewPdf,
   generatePrintRouteCard,
   generateRouteCard,
   reviewKd,
@@ -21,6 +22,62 @@ function StatusBadge({ status }) {
   }
   const info = map[status] ?? { text: status, cls: 'status-badge-pending' }
   return <span className={`status-badge ${info.cls}`}>{info.text}</span>
+}
+
+function TreeNode({ label, status, note, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const statusCls = status
+    ? { matched: 'tree-node-ok', partial_match: 'tree-node-warn', not_found: 'tree-node-error' }[status]
+    : ''
+  const hasChildren = Boolean(children)
+
+  return (
+    <div className="tree-node">
+      <div
+        className={`tree-node-row ${statusCls} ${hasChildren ? 'tree-node-toggle' : ''}`}
+        onClick={hasChildren ? () => setOpen((o) => !o) : undefined}
+      >
+        {hasChildren && <span className="tree-caret">{open ? '▾' : '▸'}</span>}
+        <span className="tree-node-label">{label}</span>
+        {status && <StatusBadge status={status} />}
+      </div>
+      {note && <div className="tree-node-note">{note}</div>}
+      {hasChildren && open && <div className="tree-node-children">{children}</div>}
+    </div>
+  )
+}
+
+function ReviewTree({ review }) {
+  return (
+    <div className="review-tree">
+      {review.material_check && (
+        <TreeNode
+          label={`Материал: ${review.material_check.material_from_drawing || '—'}`}
+          status={review.material_check.status}
+          note={review.material_check.note}
+        />
+      )}
+      {review.blank_check && (
+        <TreeNode
+          label={`Заготовка: ${review.blank_check.blank_from_drawing || '—'}`}
+          status={review.blank_check.status}
+          note={review.blank_check.note}
+        />
+      )}
+      {review.technical_requirement_checks.length > 0 && (
+        <TreeNode label="Технические требования" defaultOpen={false}>
+          {review.technical_requirement_checks.map((tt) => (
+            <TreeNode
+              key={tt.number}
+              label={`п.${tt.number}: ${tt.text}`}
+              status={tt.is_recognized ? 'matched' : 'partial_match'}
+              note={`категория: ${tt.category || 'не распознана'}`}
+            />
+          ))}
+        </TreeNode>
+      )}
+    </div>
+  )
 }
 
 function CardTable({ columns, rows }) {
@@ -56,6 +113,7 @@ export default function Module1({ onRouteCardReady, onProceedToApproval }) {
   const [materialGroupCode, setMaterialGroupCode] = useState('')
 
   const [busy, setBusy] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [error, setError] = useState(null)
   const [analysis, setAnalysis] = useState(null)
   const [review, setReview] = useState(null)
@@ -99,6 +157,24 @@ export default function Module1({ onRouteCardReady, onProceedToApproval }) {
       setError(err.message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleDownloadPdf() {
+    setPdfBusy(true)
+    setError(null)
+    try {
+      const blob = await downloadKdReviewPdf({ drawing })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'kd_review_report.pdf'
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setPdfBusy(false)
     }
   }
 
@@ -201,29 +277,38 @@ export default function Module1({ onRouteCardReady, onProceedToApproval }) {
 
       {review && (
         <section className="card">
-          <h2>Отчёт об оценке КД</h2>
-          {review.material_check && (
-            <p>
-              Материал «{review.material_check.material_from_drawing}»:{' '}
-              <StatusBadge status={review.material_check.status} />
-              {review.material_check.note ? ` — ${review.material_check.note}` : ''}
-            </p>
-          )}
-          {review.blank_check && (
-            <p>
-              Заготовка «{review.blank_check.blank_from_drawing}»:{' '}
-              <StatusBadge status={review.blank_check.status} />
-              {review.blank_check.note ? ` — ${review.blank_check.note}` : ''}
-            </p>
-          )}
+          <div className="content-header" style={{ marginBottom: 12 }}>
+            <h2 style={{ margin: 0 }}>Отчёт об оценке КД</h2>
+            <button type="button" className="btn-secondary" disabled={pdfBusy} onClick={handleDownloadPdf}>
+              {pdfBusy ? 'Формирование PDF…' : 'Скачать PDF'}
+            </button>
+          </div>
+
+          <ReviewTree review={review} />
+
           {review.findings.length > 0 && (
-            <ul className="findings-list">
-              {review.findings.map((f, i) => (
-                <li key={i} className={`finding-${f.severity}`}>
-                  {f.message}
-                </li>
-              ))}
-            </ul>
+            <>
+              <h3>Находки</h3>
+              <ul className="findings-list">
+                {review.findings.map((f, i) => (
+                  <li key={i} className={`finding-${f.severity}`}>
+                    {f.message}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {review.summary && (
+            <>
+              <h3>
+                Резюме{' '}
+                <span className="muted">
+                  ({review.summary.generated_by === 'llm' ? 'сгенерировано LLM' : 'шаблонный текст'})
+                </span>
+              </h3>
+              <p>{review.summary.text}</p>
+            </>
           )}
         </section>
       )}

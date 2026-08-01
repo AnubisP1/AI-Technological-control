@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     models_dir: Path = BACKEND_ROOT.parent / "models"
     log_level: str = "INFO"
 
+    # ⚠️ Осознанное исключение из офлайн-требования ТЗ (Фаза 8, см.
+    # dev/QUESTIONS.md №12) — облачный YandexGPT API для формулировок
+    # отчёта КД. Если не заданы, KdReviewService работает полностью
+    # офлайн на шаблонном тексте (см. TemplateTextGenerator).
+    yandex_gpt_api_key: str | None = None
+    yandex_gpt_folder_id: str | None = None
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
