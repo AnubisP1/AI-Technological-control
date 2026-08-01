@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from typing import Callable, TypeVar
 
 T = TypeVar("T")
@@ -29,11 +30,16 @@ def get_executor(max_workers: int = 1) -> ProcessPoolExecutor:
 
 
 async def run_heavy(func: Callable[..., T], *args, **kwargs) -> T:
-    """Выполняет тяжёлую синхронную функцию в воркер-пуле, не блокируя event loop."""
+    """Выполняет тяжёлую синхронную функцию в воркер-пуле, не блокируя event loop.
+
+    С kwargs используется functools.partial, а не лямбда/замыкание —
+    ProcessPoolExecutor передаёт задачу в отдельный процесс через pickle,
+    а лямбды не пиклятся (в отличие от partial над модульной функцией/
+    методом верхнего уровня)."""
     loop = asyncio.get_running_loop()
     executor = get_executor()
     if kwargs:
-        return await loop.run_in_executor(executor, lambda: func(*args, **kwargs))
+        return await loop.run_in_executor(executor, partial(func, *args, **kwargs))
     return await loop.run_in_executor(executor, func, *args)
 
 

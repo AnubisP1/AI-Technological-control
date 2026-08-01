@@ -11,6 +11,7 @@ from app.domain.manufacturing.approval_model import ApprovalDecision
 from app.domain.manufacturing.simulation_model import SimulationPlan
 from app.domain.process_planning.print_card_model import PostprocessingCard, PrintProcessCard
 from app.domain.process_planning.route_card_model import RouteCard
+from app.domain.quality_control.serial_production_model import QualityReport
 from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
 from app.infrastructure.cad.auto_view_detector import AutoViewDetector
 from app.infrastructure.cad.regex_step_parser import RegexStepParser
@@ -19,6 +20,7 @@ from app.infrastructure.db.nsi_db import NsiDatabase, build_database, connect
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
 from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanningLookup
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
+from app.infrastructure.quality_control.opencv_photo_comparator import OpenCvPhotoComparator
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.infrastructure.worker_pool import run_heavy
 from app.services.approval_service import ApprovalRejectionRequiresCommentError, ApprovalService
@@ -28,11 +30,13 @@ from app.services.manufacturing_simulation_service import ManufacturingSimulatio
 from app.services.print_card_generator import PrintCardGenerator
 from app.services.print_process_planning_service import PrintProcessPlanningService
 from app.services.process_planning_service import ProcessPlanningService
+from app.services.quality_control_service import QualityControlService
 from app.services.route_card_generator import RouteCardGenerator, parse_layout_columns
 
 router = APIRouter()
 _approval_service = ApprovalService()
 _simulation_service = ManufacturingSimulationService()
+_quality_control_service = QualityControlService(OpenCvPhotoComparator())
 
 _drawing_parser = AutoDrawingParser()
 
@@ -448,3 +452,107 @@ async def simulate_print_manufacturing(
         "plan": _simulation_plan_to_dict(plan),
         "warnings": list(planning_result.warnings),
     }
+
+
+def _quality_report_to_dict(report: QualityReport) -> dict:
+    plan_json = None
+    if report.serial_production_plan is not None:
+        p = report.serial_production_plan
+        plan_json = {
+            "operation_count": p.operation_count,
+            "estimated_cycle_time_minutes": p.estimated_cycle_time_minutes,
+            "estimated_batch_100_duration_days": p.estimated_batch_100_duration_days,
+            "estimated_unit_cost_rub": p.estimated_unit_cost_rub,
+            "risk_level": p.risk_level,
+            "estimated_defect_rate_percent": p.estimated_defect_rate_percent,
+            "workshop_load_notes": list(p.workshop_load_notes),
+            "is_demonstration_estimate": p.is_demonstration_estimate,
+        }
+
+    return {
+        "verdict": report.verdict,
+        "similarity_score": report.similarity_score,
+        "notes": list(report.notes),
+        "serial_production_plan": plan_json,
+        "optimization_suggestions": [s.text for s in report.optimization_suggestions],
+        "remediation_recommendations": [r.text for r in report.remediation_recommendations],
+    }
+
+
+@router.post("/quality/assess/metal")
+async def assess_quality_metal(
+    drawing: UploadFile, reference_photo: UploadFile, actual_photo: UploadFile
+) -> dict:
+    """Модуль 3 (металл): сравнивает фото изготовленной детали с
+    эталонным фото (см. dev/QUESTIONS.md — рендер реальной геометрии
+    STEP недоступен без pythonocc-core, поэтому эталон — фото, а не
+    рендер 3D-модели), затем ветвится в документы для серии (норма) или
+    рекомендации по устранению брака.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        drawing_path = tmp_path / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+        reference_path = tmp_path / (reference_photo.filename or "reference.jpg")
+        reference_path.write_bytes(await reference_photo.read())
+        actual_path = tmp_path / (actual_photo.filename or "actual.jpg")
+        actual_path.write_bytes(await actual_photo.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+
+        metal_db_path = _get_metal_db_path()
+        planning_service = ProcessPlanningService(SqliteProcessPlanningLookup(metal_db_path))
+        planning_result = planning_service.plan(
+            part_name=drawing_model.title_block.part_name if drawing_model else None,
+            material_grade=drawing_model.title_block.material if drawing_model else None,
+        )
+        simulation_plan = _simulation_service.build_metal_plan(planning_result)
+
+        report = await run_heavy(
+            _quality_control_service.assess,
+            reference_photo_path=reference_path,
+            actual_photo_path=actual_path,
+            simulation_plan=simulation_plan,
+            planning_warnings=planning_result.warnings,
+        )
+    return _quality_report_to_dict(report)
+
+
+@router.post("/quality/assess/print")
+async def assess_quality_print(
+    step_model: UploadFile,
+    reference_photo: UploadFile,
+    actual_photo: UploadFile,
+    am_technology_code: str,
+    material_group_code: str,
+) -> dict:
+    """Модуль 3 (пластик) — аналог assess_quality_metal на основе
+    автоподбора печати."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        step_path = tmp_path / (step_model.filename or "model.step")
+        step_path.write_bytes(await step_model.read())
+        reference_path = tmp_path / (reference_photo.filename or "reference.jpg")
+        reference_path.write_bytes(await reference_photo.read())
+        actual_path = tmp_path / (actual_photo.filename or "actual.jpg")
+        actual_path.write_bytes(await actual_photo.read())
+
+        step = await run_heavy(RegexStepParser().parse, step_path)
+
+        additive_db_path = _get_additive_db_path()
+        planning_service = PrintProcessPlanningService(SqlitePrintPlanningLookup(additive_db_path))
+        planning_result = planning_service.plan(
+            part_name=step.product_name or None,
+            am_technology_code=am_technology_code,
+            material_group_code=material_group_code,
+        )
+        simulation_plan = _simulation_service.build_print_plan(planning_result)
+
+        report = await run_heavy(
+            _quality_control_service.assess,
+            reference_photo_path=reference_path,
+            actual_photo_path=actual_path,
+            simulation_plan=simulation_plan,
+            planning_warnings=planning_result.warnings,
+        )
+    return _quality_report_to_dict(report)
