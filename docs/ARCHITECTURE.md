@@ -40,4 +40,8 @@
 
 ## База данных
 
-SQLite, адаптация PostgreSQL-схем `БД НСИ/` (металл) и `БД НСИ Аддитив/` (аддитив) — детали адаптации типов см. `../PLAN.md` Фаза 1.
+SQLite. Адаптированные схемы лежат в `backend/app/infrastructure/db/schema_sqlite/{metal,additive}/` (metal = `БД НСИ/`, additive = `БД НСИ Аддитив/`), загрузчик — `backend/app/infrastructure/db/nsi_db.py` (`build_database()`/`connect()`). Обе схемы независимы (без FK друг на друга), выбор — по признаку "материал детали" (Металл → metal, Пластик → additive) из Модуля 1.
+
+Ключевые отличия от PostgreSQL-оригиналов: `SERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`, `JSONB` → `TEXT`, `now()` → `datetime('now')`, `COMMENT ON` → обычные SQL-комментарии. Одно структурное изменение: `БД НСИ/06_process.sql` в оригинале добавлял FK к таблице `workpiece` постфактум через `ALTER TABLE ADD CONSTRAINT` (SQLite это не поддерживает) — в SQLite-версии FK на `part(id)` объявлен сразу в `CREATE TABLE workpiece` (файл 04); работает, потому что SQLite не проверяет существование целевой таблицы FK на момент `CREATE TABLE`, только при последующих операциях с данными.
+
+Обе схемы прогнаны на живом SQLite и покрыты тестами (`backend/tests/test_nsi_db.py`) — это первый реальный прогон этих схем на каком-либо сервере БД (оригинальные README отмечали, что схемы были проверены только структурно). При прогоне обнаружена и исправлена ошибка порядка seed-файлов в additive-схеме (`seed_application_rules.sql` зависит от `seed_data.sql`, но шёл раньше по алфавиту) — порядок теперь задаётся явно в `nsi_db.py`, а не через сортировку по имени файла.
