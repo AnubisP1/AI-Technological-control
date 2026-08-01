@@ -19,6 +19,21 @@ python -m pytest -q              # тесты
 uvicorn app.main:app --reload    # dev-сервер, http://localhost:8000/health
 ```
 
+## База данных (НСИ)
+
+```bash
+cd backend
+source .venv/bin/activate
+python -c "
+from pathlib import Path
+from app.infrastructure.db.nsi_db import NsiDatabase, build_database
+build_database(NsiDatabase.METAL, Path('data/metal.sqlite'))
+build_database(NsiDatabase.ADDITIVE, Path('data/additive.sqlite'))
+"
+```
+
+Создаёт два независимых SQLite-файла (металлообработка / аддитивные технологии) со схемой и демо-данными — адаптация PostgreSQL-схем из `../БД НСИ/` и `../БД НСИ Аддитив/`, см. `docs/ARCHITECTURE.md`.
+
 ## Frontend
 
 ```bash
