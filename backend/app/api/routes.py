@@ -7,16 +7,20 @@ from fastapi import APIRouter, UploadFile
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
 from app.domain.kd_review.review_model import KdReviewReport
+from app.domain.process_planning.route_card_model import RouteCard
 from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
 from app.infrastructure.cad.auto_view_detector import AutoViewDetector
 from app.infrastructure.cad.regex_step_parser import RegexStepParser
 from app.infrastructure.config import get_settings
-from app.infrastructure.db.nsi_db import NsiDatabase, build_database
+from app.infrastructure.db.nsi_db import NsiDatabase, build_database, connect
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
+from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.infrastructure.worker_pool import run_heavy
 from app.services.kd_analysis_service import KdAnalysisService
 from app.services.kd_review_service import KdReviewService
+from app.services.process_planning_service import ProcessPlanningService
+from app.services.route_card_generator import RouteCardGenerator, parse_layout_columns
 
 router = APIRouter()
 
@@ -197,3 +201,53 @@ async def review_kd(drawing: UploadFile) -> dict:
     review_service = KdReviewService(nsi_lookup=SqliteNsiLookup(metal_db_path))
     report = review_service.review(drawing_model)
     return _review_to_dict(report)
+
+
+def _route_card_to_dict(card: RouteCard, warnings: tuple[str, ...]) -> dict:
+    return {
+        "part_name": card.part_name,
+        "material_grade": card.material_grade,
+        "gost_form": card.gost_form,
+        "columns": list(card.columns),
+        "rows": [list(row.values) for row in card.rows],
+        "warnings": list(warnings),
+    }
+
+
+@router.post("/kd/route-card")
+async def generate_route_card(drawing: UploadFile) -> dict:
+    """Модуль 1.3 (упрощённый автоподбор, см. dev/PLAN.md Фаза 4):
+    разбирает чертёж, подбирает станки/операции по правилам совместимости
+    из БД НСИ и генерирует маршрутную карту по шаблону document_template.
+
+    Автоподбор не рассчитывает нормы времени и не назначает цех/разряд —
+    соответствующие графы карты остаются пустыми, не выдуманными.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+
+    metal_db_path = _get_metal_db_path()
+    planning_service = ProcessPlanningService(SqliteProcessPlanningLookup(metal_db_path))
+    planning_result = planning_service.plan(
+        part_name=drawing_model.title_block.part_name if drawing_model else None,
+        material_grade=drawing_model.title_block.material if drawing_model else None,
+    )
+
+    connection = connect(metal_db_path)
+    try:
+        template_row = connection.execute(
+            "SELECT gost_form, layout_schema FROM document_template WHERE code = 'MK'"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    columns = parse_layout_columns(template_row["layout_schema"]) if template_row else ()
+    gost_form = template_row["gost_form"] if template_row else None
+
+    route_card = RouteCardGenerator().generate(
+        planning_result, columns=columns, gost_form=gost_form
+    )
+    return _route_card_to_dict(route_card, planning_result.warnings)
