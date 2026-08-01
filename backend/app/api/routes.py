@@ -6,19 +6,38 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
+from app.domain.kd_review.review_model import KdReviewReport
 from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
 from app.infrastructure.cad.auto_view_detector import AutoViewDetector
 from app.infrastructure.cad.regex_step_parser import RegexStepParser
+from app.infrastructure.config import get_settings
+from app.infrastructure.db.nsi_db import NsiDatabase, build_database
+from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
 from app.infrastructure.resource_governor import configure as get_resource_limits
+from app.infrastructure.worker_pool import run_heavy
 from app.services.kd_analysis_service import KdAnalysisService
+from app.services.kd_review_service import KdReviewService
 
 router = APIRouter()
 
+_drawing_parser = AutoDrawingParser()
+
 _kd_analysis_service = KdAnalysisService(
-    drawing_parser=AutoDrawingParser(),
+    drawing_parser=_drawing_parser,
     view_detector=AutoViewDetector(),
     step_parser=RegexStepParser(),
 )
+
+
+def _get_metal_db_path() -> Path:
+    """Строит metal.sqlite при первом обращении, если файла ещё нет —
+    сверка с НСИ (Модуль 1.2) не должна требовать ручного шага перед
+    запуском backend."""
+    settings = get_settings()
+    db_path = settings.database_dir / "metal.sqlite"
+    if not db_path.exists():
+        build_database(NsiDatabase.METAL, db_path)
+    return db_path
 
 
 @router.get("/health")
@@ -94,6 +113,47 @@ def _result_to_dict(result: KdAnalysisResult) -> dict:
     }
 
 
+def _review_to_dict(report: KdReviewReport) -> dict:
+    material_json = None
+    if report.material_check is not None:
+        mc = report.material_check
+        material_json = {
+            "material_from_drawing": mc.material_from_drawing,
+            "status": mc.status.value,
+            "matched_grade": mc.matched_grade,
+            "matched_gost": mc.matched_gost,
+            "note": mc.note,
+        }
+
+    blank_json = None
+    if report.blank_check is not None:
+        bc = report.blank_check
+        blank_json = {
+            "blank_from_drawing": bc.blank_from_drawing,
+            "status": bc.status.value,
+            "matched_designation": bc.matched_designation,
+            "note": bc.note,
+        }
+
+    return {
+        "material_check": material_json,
+        "blank_check": blank_json,
+        "technical_requirement_checks": [
+            {
+                "number": tt.number,
+                "text": tt.text,
+                "is_recognized": tt.is_recognized,
+                "category": tt.category,
+            }
+            for tt in report.technical_requirement_checks
+        ],
+        "findings": [
+            {"severity": f.severity, "message": f.message} for f in report.findings
+        ],
+        "has_blocking_findings": report.has_blocking_findings,
+    }
+
+
 @router.post("/kd/analyze")
 async def analyze_kd(
     drawing: UploadFile | None = None,
@@ -120,3 +180,20 @@ async def analyze_kd(
             drawing_path=drawing_path, step_path=step_path
         )
         return _result_to_dict(result)
+
+
+@router.post("/kd/review")
+async def review_kd(drawing: UploadFile) -> dict:
+    """Модуль 1.2: сверка чертежа с БД НСИ (материал, заготовка) и оценка
+    технических требований — генерация отчёта об оценке КД.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+
+    metal_db_path = _get_metal_db_path()
+    review_service = KdReviewService(nsi_lookup=SqliteNsiLookup(metal_db_path))
+    report = review_service.review(drawing_model)
+    return _review_to_dict(report)
