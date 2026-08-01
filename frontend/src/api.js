@@ -24,6 +24,17 @@ export async function reviewKd({ drawing }) {
   return parseJsonOrThrow(response)
 }
 
+export async function downloadKdReviewPdf({ drawing }) {
+  const form = new FormData()
+  form.append('drawing', drawing)
+  const response = await fetch(`${API_BASE}/kd/review/pdf`, { method: 'POST', body: form })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.detail ?? response.statusText)
+  }
+  return response.blob()
+}
+
 export async function generateRouteCard({ drawing }) {
   const form = new FormData()
   form.append('drawing', drawing)

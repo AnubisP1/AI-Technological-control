@@ -33,3 +33,6 @@ def test_review_endpoint_returns_material_and_blank_checks():
     assert len(body["technical_requirement_checks"]) == 7
     assert isinstance(body["findings"], list)
     assert body["has_blocking_findings"] is False
+    # Без настроенных YANDEX_GPT_API_KEY/YANDEX_GPT_FOLDER_ID (обычный
+    # офлайн-запуск) резюме формируется офлайн-шаблоном, не LLM.
+    assert body["summary"]["generated_by"] == "template"

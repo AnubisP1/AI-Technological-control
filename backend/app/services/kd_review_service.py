@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from app.domain.cad.drawing_model import DrawingModel
 from app.domain.kd_review.material_matching import match_blank, match_material
 from app.domain.kd_review.nsi_lookup_port import INsiLookup
@@ -14,14 +16,26 @@ from app.domain.kd_review.review_model import (
     KdReviewFinding,
     KdReviewReport,
     MatchStatus,
+    ReviewSummary,
     TechnicalRequirementCheck,
 )
+from app.domain.kd_review.text_generator_port import ITextGenerator
 from app.domain.kd_review.tt_categories import classify_requirement
+from app.infrastructure.llm.template_text_generator import TemplateTextGenerator
+
+logger = logging.getLogger(__name__)
 
 
 class KdReviewService:
-    def __init__(self, nsi_lookup: INsiLookup) -> None:
+    def __init__(
+        self, nsi_lookup: INsiLookup, text_generator: ITextGenerator | None = None
+    ) -> None:
         self._nsi_lookup = nsi_lookup
+        self._template_text_generator = TemplateTextGenerator()
+        # text_generator опционален — если не передан (обычный офлайн
+        # запуск без настроенного YandexGPT API), используется только
+        # шаблонный путь, без попытки обратиться к сети.
+        self._text_generator = text_generator
 
     def review(self, drawing: DrawingModel | None) -> KdReviewReport:
         if drawing is None:
@@ -57,13 +71,34 @@ class KdReviewService:
         )
 
         findings = self._build_findings(material_check, blank_check, tt_checks)
+        summary = self._summarize(findings)
 
         return KdReviewReport(
             material_check=material_check,
             blank_check=blank_check,
             technical_requirement_checks=tt_checks,
             findings=findings,
+            summary=summary,
         )
+
+    def _summarize(self, findings: tuple[KdReviewFinding, ...]) -> ReviewSummary:
+        facts = {"findings": [{"severity": f.severity, "message": f.message} for f in findings]}
+
+        if self._text_generator is not None:
+            try:
+                generated = self._text_generator.summarize_review(facts=facts)
+                return ReviewSummary(text=generated.text, generated_by=generated.generated_by)
+            except Exception:
+                # Сеть/ключ API/формат ответа — любая причина не должна
+                # ронять отчёт целиком. Откатываемся на шаблонный текст,
+                # который всегда доступен офлайн (см. QUESTIONS.md №12).
+                logger.warning(
+                    "Генератор текста LLM недоступен, используется шаблонный fallback",
+                    exc_info=True,
+                )
+
+        generated = self._template_text_generator.summarize_review(facts=facts)
+        return ReviewSummary(text=generated.text, generated_by=generated.generated_by)
 
     def _build_findings(
         self, material_check, blank_check, tt_checks: tuple[TechnicalRequirementCheck, ...]

@@ -64,6 +64,15 @@ class KdReviewFinding:
 
 
 @dataclass(frozen=True)
+class ReviewSummary:
+    """Связное текстовое резюме отчёта — отдельно от структурных находок,
+    см. domain/kd_review/text_generator_port.py."""
+
+    text: str
+    generated_by: str  # 'llm' | 'template'
+
+
+@dataclass(frozen=True)
 class KdReviewReport:
     """Итоговый отчёт об оценке КД по результатам сверки с БД НСИ."""
 
@@ -71,6 +80,7 @@ class KdReviewReport:
     blank_check: BlankCheck | None
     technical_requirement_checks: tuple[TechnicalRequirementCheck, ...] = field(default_factory=tuple)
     findings: tuple[KdReviewFinding, ...] = field(default_factory=tuple)
+    summary: ReviewSummary | None = None
 
     @property
     def has_blocking_findings(self) -> bool:

@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi.responses import Response
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
 from app.domain.kd_review.review_model import KdReviewReport
@@ -20,11 +21,13 @@ from app.infrastructure.db.nsi_db import NsiDatabase, build_database, connect
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
 from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanningLookup
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
+from app.infrastructure.llm.yandex_gpt_text_generator import YandexGptTextGenerator
 from app.infrastructure.quality_control.opencv_photo_comparator import OpenCvPhotoComparator
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.infrastructure.worker_pool import run_heavy
 from app.services.approval_service import ApprovalRejectionRequiresCommentError, ApprovalService
 from app.services.kd_analysis_service import KdAnalysisService
+from app.services.kd_review_pdf_export import generate_kd_review_pdf
 from app.services.kd_review_service import KdReviewService
 from app.services.manufacturing_simulation_service import ManufacturingSimulationService
 from app.services.print_card_generator import PrintCardGenerator
@@ -178,7 +181,25 @@ def _review_to_dict(report: KdReviewReport) -> dict:
             {"severity": f.severity, "message": f.message} for f in report.findings
         ],
         "has_blocking_findings": report.has_blocking_findings,
+        "summary": (
+            {"text": report.summary.text, "generated_by": report.summary.generated_by}
+            if report.summary is not None
+            else None
+        ),
     }
+
+
+def _build_text_generator():
+    """Возвращает YandexGptTextGenerator, если в .env заданы ключи
+    (осознанное исключение из офлайн-требования, см. QUESTIONS.md №12),
+    иначе None — тогда KdReviewService работает целиком офлайн на
+    шаблонном тексте."""
+    settings = get_settings()
+    if not settings.yandex_gpt_api_key or not settings.yandex_gpt_folder_id:
+        return None
+    return YandexGptTextGenerator(
+        api_key=settings.yandex_gpt_api_key, folder_id=settings.yandex_gpt_folder_id
+    )
 
 
 @router.post("/kd/analyze")
@@ -221,9 +242,38 @@ async def review_kd(drawing: UploadFile) -> dict:
         drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
 
     metal_db_path = _get_metal_db_path()
-    review_service = KdReviewService(nsi_lookup=SqliteNsiLookup(metal_db_path))
+    review_service = KdReviewService(
+        nsi_lookup=SqliteNsiLookup(metal_db_path), text_generator=_build_text_generator()
+    )
     report = review_service.review(drawing_model)
     return _review_to_dict(report)
+
+
+@router.post("/kd/review/pdf")
+async def review_kd_pdf(drawing: UploadFile) -> Response:
+    """Экспорт отчёта Модуля 1.2 в PDF (Фаза 8, см. dev/QUESTIONS.md №12)
+    — та же сверка, что и /kd/review, но результат отдаётся файлом.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+
+    metal_db_path = _get_metal_db_path()
+    review_service = KdReviewService(
+        nsi_lookup=SqliteNsiLookup(metal_db_path), text_generator=_build_text_generator()
+    )
+    report = review_service.review(drawing_model)
+
+    part_name = drawing_model.title_block.part_name if drawing_model else None
+    pdf_bytes = await run_heavy(generate_kd_review_pdf, report, part_name=part_name)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="kd_review_report.pdf"'},
+    )
 
 
 def _route_card_to_dict(card: RouteCard, warnings: tuple[str, ...]) -> dict:
