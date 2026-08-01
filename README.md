@@ -72,14 +72,29 @@ curl -X POST "http://localhost:8000/print/route-card?am_technology_code=SLA&mate
 
 Операционная карта / детализация переходов и режимов резания (металл), а также параметры печати (высота слоя, время, расход материала — пластик) не реализованы — отложено на реализацию после завершения основного плана (см. `PROGRESS.md`).
 
+## Согласование и симуляция изготовления (Модуль 2)
+
+```bash
+curl -X POST "http://localhost:8000/manufacturing/approval?decision=approved"
+curl -X POST "http://localhost:8000/manufacturing/approval?decision=rejected&comment=Уточнить+разряд"
+
+curl -X POST http://localhost:8000/manufacturing/simulate/metal -F "drawing=@чертёж.pdf"
+curl -X POST "http://localhost:8000/manufacturing/simulate/print?am_technology_code=SLA&material_group_code=RESIN_STD" \
+  -F "step_model=@модель.step"
+```
+
+Согласование ничего не сохраняет (нет персистентного хранилища проектов) — при `rejected` обязателен `comment`, иначе 422. Симуляция строится из того же результата автоподбора, что и маршрутная/печатная карта (не пересчитывает его заново): возвращает план из операций с долями времени (`duration_share`, в сумме дающими 15 секунд по ТЗ), кодом иконки станка/принтера для фронтенда и построчной универсальной управляющей программой (статичный шаблон, не расчёт для конкретной геометрии — см. `docs/ARCHITECTURE.md`).
+
 ## Frontend
 
 ```bash
 cd frontend
 npm install
-npm run dev      # dev-сервер, http://localhost:5173
+npm run dev      # dev-сервер, http://localhost:5173 (проксирует /api на backend :8000, см. vite.config.js)
 npm run build    # прод-сборка в dist/
 ```
+
+Реализованы экраны Модуля 1 (загрузка КД, выбор металл/пластик, результат анализа/оценки/карты) и Модуля 2 (согласование с комментарием при отклонении; симуляция изготовления — 15-секундная прогресс-шкала, таймлайн операций, статичные SVG-иконки станков/принтеров, построчный вывод управляющей программы). Требует запущенного backend на порту 8000.
 
 ## Офлайн-режим
 

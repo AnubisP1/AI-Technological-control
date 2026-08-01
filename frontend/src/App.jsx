@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import './App.css'
+import Module1 from './Module1.jsx'
+import Module2 from './Module2.jsx'
 
 const NAV_ITEMS = [
   { id: 'module1', label: 'Анализ КД' },
@@ -8,8 +10,15 @@ const NAV_ITEMS = [
   { id: 'module4', label: 'Серийное производство' },
 ]
 
+const READY_MODULES = new Set(['module1', 'module2'])
+
 function App() {
   const [activeModule, setActiveModule] = useState(NAV_ITEMS[0].id)
+  const [pendingInput, setPendingInput] = useState(null)
+
+  function handleRouteCardReady(input) {
+    setPendingInput(input)
+  }
 
   return (
     <div className="app-shell">
@@ -31,11 +40,28 @@ function App() {
       <main className="content">
         <header className="content-header">
           <h1>{NAV_ITEMS.find((item) => item.id === activeModule)?.label}</h1>
-          <span className="status-badge status-badge-pending">В разработке</span>
+          {!READY_MODULES.has(activeModule) && (
+            <span className="status-badge status-badge-pending">В разработке</span>
+          )}
         </header>
-        <section className="card">
-          <p>Экран модуля будет реализован на соответствующей фазе (см. dev/PLAN.md).</p>
-        </section>
+
+        {activeModule === 'module1' && (
+          <Module1
+            onRouteCardReady={handleRouteCardReady}
+            onProceedToApproval={() => setActiveModule('module2')}
+          />
+        )}
+        {activeModule === 'module2' && (
+          <Module2
+            pendingInput={pendingInput}
+            onQualityCheck={() => setActiveModule('module3')}
+          />
+        )}
+        {!READY_MODULES.has(activeModule) && (
+          <section className="card">
+            <p>Экран модуля будет реализован на соответствующей фазе (см. dev/PLAN.md).</p>
+          </section>
+        )}
       </main>
     </div>
   )

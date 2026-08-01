@@ -3,10 +3,12 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, HTTPException, UploadFile
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
 from app.domain.kd_review.review_model import KdReviewReport
+from app.domain.manufacturing.approval_model import ApprovalDecision
+from app.domain.manufacturing.simulation_model import SimulationPlan
 from app.domain.process_planning.print_card_model import PostprocessingCard, PrintProcessCard
 from app.domain.process_planning.route_card_model import RouteCard
 from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
@@ -19,14 +21,18 @@ from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanni
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.infrastructure.worker_pool import run_heavy
+from app.services.approval_service import ApprovalRejectionRequiresCommentError, ApprovalService
 from app.services.kd_analysis_service import KdAnalysisService
 from app.services.kd_review_service import KdReviewService
+from app.services.manufacturing_simulation_service import ManufacturingSimulationService
 from app.services.print_card_generator import PrintCardGenerator
 from app.services.print_process_planning_service import PrintProcessPlanningService
 from app.services.process_planning_service import ProcessPlanningService
 from app.services.route_card_generator import RouteCardGenerator, parse_layout_columns
 
 router = APIRouter()
+_approval_service = ApprovalService()
+_simulation_service = ManufacturingSimulationService()
 
 _drawing_parser = AutoDrawingParser()
 
@@ -339,5 +345,106 @@ async def generate_print_route_card(
     return {
         "process_card": _print_process_card_to_dict(process_card),
         "postprocessing_card": _postprocessing_card_to_dict(postprocessing_card),
+        "warnings": list(planning_result.warnings),
+    }
+
+
+@router.post("/manufacturing/approval")
+async def decide_approval(decision: str, comment: str | None = None) -> dict:
+    """Модуль 2, шаг 1: согласование комплекта ТД главным технологом.
+
+    Решение не сохраняется — при 'rejected' пользователь возвращается в
+    Модуль 1 для повторной генерации с учётом комментария; при
+    'approved' фронтенд переходит к симуляции изготовления.
+    """
+    try:
+        parsed_decision = ApprovalDecision(decision)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Неизвестное решение '{decision}' — ожидается approved/rejected"
+        ) from exc
+
+    try:
+        result = _approval_service.decide(decision=parsed_decision, comment=comment)
+    except ApprovalRejectionRequiresCommentError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "decision": result.decision.value,
+        "comment": result.comment,
+        "can_start_simulation": result.can_start_simulation,
+    }
+
+
+def _simulation_plan_to_dict(plan: SimulationPlan) -> dict:
+    return {
+        "part_name": plan.part_name,
+        "material_kind": plan.material_kind,
+        "total_seconds": plan.total_seconds,
+        "operations": [
+            {
+                "sequence_no": op.sequence_no,
+                "name": op.name,
+                "machine_icon": op.machine_icon,
+                "machine_label": op.machine_label,
+                "program_lines": list(op.program_lines),
+                "duration_share": op.duration_share,
+            }
+            for op in plan.operations
+        ],
+    }
+
+
+@router.post("/manufacturing/simulate/metal")
+async def simulate_metal_manufacturing(drawing: UploadFile) -> dict:
+    """Модуль 2, шаг 2 (металл): строит план симуляции изготовления из
+    того же автоподбора техпроцесса, что и /kd/route-card — эндпоинт не
+    выполняет собственный подбор оборудования заново.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+
+    metal_db_path = _get_metal_db_path()
+    planning_service = ProcessPlanningService(SqliteProcessPlanningLookup(metal_db_path))
+    planning_result = planning_service.plan(
+        part_name=drawing_model.title_block.part_name if drawing_model else None,
+        material_grade=drawing_model.title_block.material if drawing_model else None,
+    )
+
+    plan = _simulation_service.build_metal_plan(planning_result)
+    return {
+        "plan": _simulation_plan_to_dict(plan),
+        "warnings": list(planning_result.warnings),
+    }
+
+
+@router.post("/manufacturing/simulate/print")
+async def simulate_print_manufacturing(
+    step_model: UploadFile,
+    am_technology_code: str,
+    material_group_code: str,
+) -> dict:
+    """Модуль 2, шаг 2 (пластик): аналог simulate_metal_manufacturing на
+    основе автоподбора печати из /print/route-card."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        step_path = Path(tmp_dir) / (step_model.filename or "model.step")
+        step_path.write_bytes(await step_model.read())
+
+        step = await run_heavy(RegexStepParser().parse, step_path)
+
+    additive_db_path = _get_additive_db_path()
+    planning_service = PrintProcessPlanningService(SqlitePrintPlanningLookup(additive_db_path))
+    planning_result = planning_service.plan(
+        part_name=step.product_name or None,
+        am_technology_code=am_technology_code,
+        material_group_code=material_group_code,
+    )
+
+    plan = _simulation_service.build_print_plan(planning_result)
+    return {
+        "plan": _simulation_plan_to_dict(plan),
         "warnings": list(planning_result.warnings),
     }
