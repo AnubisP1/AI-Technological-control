@@ -12,6 +12,7 @@ import pytest
 
 from app.infrastructure.cad.pdf_drawing_parser import PdfDrawingParser
 from app.infrastructure.cad.regex_step_parser import RegexStepParser
+from app.infrastructure.cad.vector_view_detector import VectorViewDetector
 from app.infrastructure.resource_governor import configure
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[3] / "КД для тестов" / "Детали из металла"
@@ -42,6 +43,7 @@ def test_step_and_drawing_parsing_respects_cpu_thread_budget():
 
     PdfDrawingParser().parse(drawing_path)
     RegexStepParser().parse(step_path)
+    VectorViewDetector().detect(drawing_path)
 
     elapsed = time.time() - started_at
     threads_after = process.num_threads()

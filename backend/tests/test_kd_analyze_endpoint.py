@@ -38,6 +38,8 @@ def test_analyze_kd_with_both_drawing_and_step():
     assert body["drawing"]["title_block"]["designation"] == "К200-150-400ENERAL.20"
     assert body["drawing"]["title_block"]["part_name"] == "Вал"
     assert len(body["drawing"]["technical_requirements"]) == 7
+    assert body["view_detection"]["method"] == "vector_clustering"
+    assert body["view_detection"]["view_count"] > 0
     assert body["step_model"]["face_count"] > 0
     assert body["step_model"]["bounding_box"]["length_x"] == pytest.approx(707.488, abs=0.5)
 
@@ -64,4 +66,9 @@ def test_analyze_kd_with_no_files_returns_empty_result():
     response = client.post("/kd/analyze")
     assert response.status_code == 200
     body = response.json()
-    assert body == {"is_complete": False, "drawing": None, "step_model": None}
+    assert body == {
+        "is_complete": False,
+        "drawing": None,
+        "view_detection": None,
+        "step_model": None,
+    }

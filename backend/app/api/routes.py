@@ -6,7 +6,8 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
-from app.infrastructure.cad.pdf_drawing_parser import PdfDrawingParser
+from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
+from app.infrastructure.cad.auto_view_detector import AutoViewDetector
 from app.infrastructure.cad.regex_step_parser import RegexStepParser
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.services.kd_analysis_service import KdAnalysisService
@@ -14,7 +15,8 @@ from app.services.kd_analysis_service import KdAnalysisService
 router = APIRouter()
 
 _kd_analysis_service = KdAnalysisService(
-    drawing_parser=PdfDrawingParser(),
+    drawing_parser=AutoDrawingParser(),
+    view_detector=AutoViewDetector(),
     step_parser=RegexStepParser(),
 )
 
@@ -50,6 +52,20 @@ def _result_to_dict(result: KdAnalysisResult) -> dict:
             ],
         }
 
+    view_detection_json = None
+    if result.view_detection is not None:
+        view_detection_json = {
+            "method": result.view_detection.method,
+            "view_count": result.view_detection.view_count,
+            "regions": [
+                {
+                    "x0": region.x0, "y0": region.y0, "x1": region.x1, "y1": region.y1,
+                    "element_count": region.element_count,
+                }
+                for region in result.view_detection.regions
+            ],
+        }
+
     step_json = None
     if result.step_model is not None:
         sm = result.step_model
@@ -70,7 +86,12 @@ def _result_to_dict(result: KdAnalysisResult) -> dict:
             "colour_count": len(sm.face_colours),
         }
 
-    return {"is_complete": result.is_complete, "drawing": drawing_json, "step_model": step_json}
+    return {
+        "is_complete": result.is_complete,
+        "drawing": drawing_json,
+        "view_detection": view_detection_json,
+        "step_model": step_json,
+    }
 
 
 @router.post("/kd/analyze")

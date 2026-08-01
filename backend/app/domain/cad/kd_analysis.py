@@ -1,7 +1,8 @@
-"""Результат разбора комплекта КД (Модуль 1.1): чертёж + опциональная
-3D-модель. Спецификация (BOM) сюда пока не входит — по ТЗ она нужна
-только для металлических изделий и требует отдельного парсера состава
-изделия, не реализованного на этой фазе (см. dev/PLAN.md Фаза 2)."""
+"""Результат разбора комплекта КД (Модуль 1.1): чертёж (включая
+детекцию видов) + опциональная 3D-модель. Спецификация (БОМ) сознательно
+исключена из объёма проекта — по решению пользователя достаточно
+чертежа и 3D-модели для формирования технологической документации
+(dev/QUESTIONS.md обновлён соответствующим решением)."""
 
 from __future__ import annotations
 
@@ -9,11 +10,13 @@ from dataclasses import dataclass
 
 from app.domain.cad.drawing_model import DrawingModel
 from app.domain.cad.step_model import StepModel
+from app.domain.cad.view_detection_model import ViewDetectionResult
 
 
 @dataclass(frozen=True)
 class KdAnalysisResult:
     drawing: DrawingModel | None
+    view_detection: ViewDetectionResult | None
     step_model: StepModel | None
 
     @property

@@ -58,6 +58,19 @@ def configure(cpu_fraction: float | None = None) -> ResourceLimits:
     except ImportError:
         pass
 
+    try:
+        import cv2
+
+        # На macOS ARM opencv-python(-headless) обычно собран с параллельным
+        # бэкендом GCD (Grand Central Dispatch), а не TBB/OpenMP — для GCD
+        # cv2.setNumThreads() задокументированно не имеет эффекта (OpenCV не
+        # управляет размером пула потоков GCD). Вызов всё равно делаем — на
+        # сборках с TBB/OpenMP (типично для Linux/Windows-дистрибутивов) он
+        # реально ограничивает потоки; на GCD-сборках это no-op, а не ошибка.
+        cv2.setNumThreads(thread_count)
+    except ImportError:
+        pass
+
     return ResourceLimits(
         thread_count=thread_count,
         cpu_fraction=fraction,
