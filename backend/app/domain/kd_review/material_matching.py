@@ -14,28 +14,9 @@ import re
 
 from app.domain.kd_review.nsi_lookup_port import MaterialRecord, WorkpieceBlankRecord
 from app.domain.kd_review.review_model import BlankCheck, MaterialCheck, MatchStatus
-
-_RE_GOST_NUMBER = re.compile(r"ГОСТ\s*([\d.\-]+)", re.IGNORECASE)
-_RE_STRIP_STEEL_PREFIX = re.compile(r"^Сталь\s+", re.IGNORECASE)
-
-
-def _normalize_grade(text: str) -> str:
-    """Убирает слово 'Сталь' и пробелы, приводит к верхнему регистру —
-    "Сталь 45" и "45" должны сравниваться как одна и та же марка."""
-    without_prefix = _RE_STRIP_STEEL_PREFIX.sub("", text)
-    return re.sub(r"\s+", "", without_prefix).upper()
-
-
-def _extract_gost_number(text: str) -> str | None:
-    match = _RE_GOST_NUMBER.search(text)
-    return match.group(1) if match else None
-
-
-def _extract_grade_part(material_text: str) -> str:
-    """Отрезает от строки материала часть с ГОСТ, оставляя только марку —
-    'Сталь 12ХН3А ГОСТ 4543-2016' -> 'Сталь 12ХН3А'."""
-    gost_pos = material_text.upper().find("ГОСТ")
-    return material_text[:gost_pos].strip() if gost_pos != -1 else material_text.strip()
+from app.domain.material_text import extract_gost_number as _extract_gost_number
+from app.domain.material_text import extract_grade_part as _extract_grade_part
+from app.domain.material_text import normalize_grade as _normalize_grade
 
 
 def match_material(
