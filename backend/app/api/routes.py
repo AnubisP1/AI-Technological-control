@@ -3,13 +3,16 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
 from app.domain.kd_review.review_model import KdReviewReport
 from app.domain.manufacturing.approval_model import ApprovalDecision
 from app.domain.manufacturing.simulation_model import SimulationPlan
+from app.domain.process_planning.material_recommendation_model import (
+    MaterialRecommendationResult,
+)
 from app.domain.process_planning.print_card_model import PostprocessingCard, PrintProcessCard
 from app.domain.process_planning.route_card_model import RouteCard
 from app.domain.quality_control.serial_production_model import QualityReport
@@ -30,6 +33,7 @@ from app.services.kd_analysis_service import KdAnalysisService
 from app.services.kd_review_pdf_export import generate_kd_review_pdf
 from app.services.kd_review_service import KdReviewService
 from app.services.manufacturing_simulation_service import ManufacturingSimulationService
+from app.services.material_recommendation_service import MaterialRecommendationService
 from app.services.print_card_generator import PrintCardGenerator
 from app.services.print_process_planning_service import PrintProcessPlanningService
 from app.services.process_planning_service import ProcessPlanningService
@@ -354,6 +358,97 @@ def _postprocessing_card_to_dict(card: PostprocessingCard) -> dict:
         "columns": list(card.columns),
         "rows": [list(row.values) for row in card.rows],
     }
+
+
+def _material_recommendation_result_to_dict(result: MaterialRecommendationResult) -> dict:
+    return {
+        "part_application_class_code": result.part_application_class_code,
+        "matched_operating_conditions": list(result.matched_operating_conditions),
+        "options": [
+            {
+                "priority": option.priority,
+                "am_technology_code": option.am_technology_code,
+                "am_technology_name": option.am_technology_name,
+                "material_group_code": option.material_group_code,
+                "material_group_name": option.material_group_name,
+                "rationale": option.rationale,
+                "source_type": option.source_type,
+                "source_title": option.source_title,
+                "source_reliability": option.source_reliability,
+                "min_infill_percent": option.min_infill_percent,
+                "recommended_wall_count": option.recommended_wall_count,
+                "orientation_note": option.orientation_note,
+            }
+            for option in result.options
+        ],
+        "warnings": list(result.warnings),
+    }
+
+
+@router.get("/print/part-application-classes")
+async def list_part_application_classes() -> list[dict]:
+    """Справочник классов применения детали (БПЛА-домен: носовой обтекатель,
+    крыло, винт и т.д., см. am_part.part_application_class) — источник
+    выбора для автоподбора материала (Фаза 10), не для ручного выбора
+    технологии/материала печати."""
+    lookup = SqlitePrintPlanningLookup(_get_additive_db_path())
+    classes = lookup.find_part_application_classes()
+    return [
+        {"code": c.code, "name": c.name, "description": c.description} for c in classes
+    ]
+
+
+@router.get("/print/operating-conditions")
+async def list_operating_conditions(part_application_class_code: str | None = None) -> list[dict]:
+    """Условия эксплуатации (температура/скорость потока/УФ/вибрация/удар/
+    влажность). Без параметра — весь справочник; с параметром — только
+    типичные для указанного класса детали (part_application_class_typical_condition),
+    чтобы UI мог подсказать релевантный набор, не весь список целиком."""
+    lookup = SqlitePrintPlanningLookup(_get_additive_db_path())
+    part_class_id = None
+    if part_application_class_code is not None:
+        part_class = lookup.find_part_application_class_by_code(part_application_class_code)
+        if part_class is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Класс применения детали '{part_application_class_code}' не найден",
+            )
+        part_class_id = part_class.id
+    conditions = lookup.find_operating_conditions(part_class_id)
+    return [
+        {
+            "code": c.code,
+            "name": c.name,
+            "condition_type": c.condition_type,
+            "range_min": c.range_min,
+            "range_max": c.range_max,
+            "unit": c.unit,
+        }
+        for c in conditions
+    ]
+
+
+@router.post("/print/material-recommendations")
+async def recommend_materials(
+    part_application_class_code: str,
+    operating_condition_codes: list[str] = Query(default=[]),
+) -> dict:
+    """Автоподбор материала/технологии печати по классу применения детали
+    и условиям эксплуатации (Модуль 1.3, Фаза 10) — заменяет ручной выбор
+    технологии/материала для пластика. Результат — упорядоченный по
+    priority список вариантов с обоснованием и явной пометкой надёжности
+    источника (source_type/source_reliability), не выдаётся за
+    производственный расчёт. Не меняет /print/route-card и другие уже
+    существующие эндпоинты — фронтенд берёт options[0] и передаёт его коды
+    в них, как и раньше.
+    """
+    lookup = SqlitePrintPlanningLookup(_get_additive_db_path())
+    service = MaterialRecommendationService(lookup)
+    result = service.recommend(
+        part_application_class_code=part_application_class_code,
+        operating_condition_codes=tuple(operating_condition_codes),
+    )
+    return _material_recommendation_result_to_dict(result)
 
 
 @router.post("/print/route-card")
