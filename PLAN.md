@@ -103,6 +103,44 @@
 - ✅ Поле `generated_by: "llm"|"template"` в ответе API и в UI — не выдаём шаблонный текст за LLM-результат и наоборот.
 - DoD выполнен: визуальные улучшения и LLM-интеграция проверены вживую (Playwright) на реальном fixture — дерево, PDF-скачивание, шаблонный fallback (реальный вызов YandexGPT не тестировался в CI — юнит-тесты используют mock `ITextGenerator`).
 
+## Фаза 9 (вне исходного плана, инициирована пользователем) — фундамент под переделку фронтенда ✅ завершена (см. PROGRESS.md)
+
+Пользователь запросил полную переделку графического интерфейса под инвесторское демо — бренд "AI-Технолог", БПЛА-домен, AI-ассистент, 3D-вьюер, автоподбор материала пластика, экран цифрового двойника. Детальный план — `/Users/bdd/.claude/plans/abundant-kindling-oasis.md`, фазы 9-16 продолжают нумерацию этого файла.
+
+- ✅ `CLAUDE.md` обновлён под новый стек и бренд/домен, старый стек помечен legacy.
+- ✅ `dev/frontend-v2/` — Vite+React+TS+Tailwind/shadcn+Framer Motion+R3F+TanStack Query, порт 5174, dev-proxy на backend.
+- ✅ CORS middleware в backend.
+- ✅ 3D-вьюер spike (параметрическая модель по реальным размерам STEP), проверен вживую на реальном fixture.
+- DoD выполнен: `npm run build` чистый, `pytest` backend 99/99, визуальная проверка через Playwright.
+
+## Фаза 10 — Backend: автоподбор материала для пластика (БПЛА-домен)
+
+- ⬜ Домен `MaterialRecommendationOption`/`MaterialRecommendationResult`, 3 новых метода `IPrintPlanningLookup`, `MaterialRecommendationService`, 3 новых эндпоинта (`/print/part-application-classes`, `/print/operating-conditions`, `/print/material-recommendations`) — читают уже засеянные, но не подключённые таблицы `part_application_class`/`operating_condition`/`application_material_recommendation` в additive-НСИ. Существующие `/print/route-card` и др. не меняются.
+
+## Фаза 11 — Главная страница + оболочка приложения
+
+- ⬜ Маркетинговый лендинг (реальные данные, не lorem) + рабочая навигационная оболочка нового фронтенда — первая демонстрируемая веха.
+
+## Фаза 12 — Экран "Анализ детали"
+
+- ⬜ Дерево проверки КД (перенос логики `ReviewTree`), 3D-вьюер интегрирован по-настоящему, блок автоподбора материала (использует Фазу 10) — без ручных дропдаунов технологии/материала.
+
+## Фаза 13 — Экраны "Производство" и "Контроль качества"
+
+- ⬜ Перенос логики симуляции (G-code typewriter) и фото-QC на новый стек.
+
+## Фаза 14 — Цифровой двойник
+
+- ⬜ Изометрическая схема цеха + граф-схема IT/IIoT-архитектуры, по образцу `UI UX reference/factory digital twin.html` и `visual factory.html`, симулированная телеметрия на фронте.
+
+## Фаза 15 — AI-ассистент
+
+- ⬜ `POST /assistant/chat` (YandexGPT + keyword-контекст из НСИ, тот же fallback-паттерн, что LLM-резюме отчёта) + фронтенд-панель чата.
+
+## Фаза 16 — Полировка и финальная проверка
+
+- ⬜ Сквозной прогон на реальных fixture (включая детали из `Архив/`), замена `dev/frontend` на `dev/frontend-v2`, обновление `dev/README.md`/`docs/ARCHITECTURE.md`.
+
 ## Сквозные задачи (весь проект, не отдельная фаза)
 
 - Поддержание `PROGRESS.md`, `docs/ARCHITECTURE.md`, `docs/INPUTS.md`, корневого `README.md` (офлайн-разворачивание на чистой машине Win/Mac) — обновлять по итогам каждой фазы, а не в конце.
