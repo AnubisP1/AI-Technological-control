@@ -43,12 +43,20 @@ class RouteCardGenerator:
             for op in planning_result.operations
         )
 
+        technical_requirements = tuple(
+            f"{req.text} ({req.reference_standard})"
+            if req.reference_standard and req.reference_standard not in req.text
+            else req.text
+            for req in planning_result.technical_requirements
+        )
+
         return RouteCard(
             part_name=planning_result.part_name,
             material_grade=planning_result.material_grade,
             gost_form=gost_form,
             columns=columns,
             rows=rows,
+            technical_requirements=technical_requirements,
         )
 
 

@@ -283,6 +283,7 @@ def _route_card_to_dict(card: RouteCard, warnings: tuple[str, ...]) -> dict:
         "gost_form": card.gost_form,
         "columns": list(card.columns),
         "rows": [list(row.values) for row in card.rows],
+        "technical_requirements": list(card.technical_requirements),
         "warnings": list(warnings),
     }
 
@@ -327,10 +328,24 @@ async def generate_route_card(drawing: UploadFile) -> dict:
 
 
 def _print_process_card_to_dict(card: PrintProcessCard) -> dict:
+    qs = card.quality_standard
     return {
         "part_name": card.part_name,
         "columns": list(card.columns),
         "row": list(card.row.values),
+        "quality_standard": (
+            {
+                "tolerance_mm": qs.tolerance_mm,
+                "min_wall_thickness_mm": qs.min_wall_thickness_mm,
+                "roughness_ra_raw_um": qs.roughness_ra_raw_um,
+                "roughness_ra_finished_um": qs.roughness_ra_finished_um,
+                "min_thread_pitch_mm": qs.min_thread_pitch_mm,
+                "assembly_clearance_mm": qs.assembly_clearance_mm,
+                "source_note": qs.source_note,
+            }
+            if qs
+            else None
+        ),
     }
 
 

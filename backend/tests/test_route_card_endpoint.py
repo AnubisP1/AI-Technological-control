@@ -35,3 +35,6 @@ def test_route_card_endpoint_generates_card_with_columns_from_template():
     # Каждая строка должна иметь то же число значений, что и столбцов.
     for row in body["rows"]:
         assert len(row) == len(body["columns"])
+    # Типовые ТТ по ОСТ 1 02504-84 (табл. 11/16) — реальный материал вала
+    # ("45 ГОСТ 1050-2013") должен получить хотя бы общие формулировки.
+    assert len(body["technical_requirements"]) > 0

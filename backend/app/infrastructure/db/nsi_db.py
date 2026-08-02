@@ -26,8 +26,12 @@ class NsiDatabase(str, Enum):
 # зависят строки в seed_application_rules.sql (правила подбора по классу
 # детали ссылаются на printer_type_id, заведённый в seed_data.sql).
 _SEED_FILE_ORDER: dict[NsiDatabase, list[str]] = {
-    NsiDatabase.METAL: ["seed_data.sql"],
-    NsiDatabase.ADDITIVE: ["seed_data.sql", "seed_application_rules.sql"],
+    NsiDatabase.METAL: ["seed_data.sql", "seed_typical_technical_requirements.sql"],
+    NsiDatabase.ADDITIVE: [
+        "seed_data.sql",
+        "seed_application_rules.sql",
+        "seed_print_quality_standards.sql",
+    ],
 }
 
 

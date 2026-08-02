@@ -59,3 +59,52 @@ def test_plan_returns_warning_when_material_not_in_nsi_for_technology(tmp_path: 
     assert result.is_empty
     assert len(result.warnings) == 1
     assert "не найден в справочнике" in result.warnings[0]
+
+
+def test_plan_includes_quality_standard_from_technology_tolerance_table(tmp_path: Path):
+    """Данные из am_technology_tolerance (источник: inner.su, см.
+    seed_print_quality_standards.sql) должны попадать в результат
+    автоподбора для отображения в карте техпроцесса печати."""
+    service = _service(tmp_path)
+    result = service.plan(
+        part_name="Корпус датчика", am_technology_code="FDM", material_group_code="PETG"
+    )
+
+    assert result.quality_standard is not None
+    assert result.quality_standard.tolerance_mm == "±0.3-0.5"
+    assert result.quality_standard.min_thread_pitch_mm == "1"
+    assert "inner.su" in result.quality_standard.source_note
+
+
+def test_plan_sla_quality_standard_has_tighter_tolerance_than_fdm(tmp_path: Path):
+    service = _service(tmp_path)
+    fdm_result = service.plan(
+        part_name="Деталь", am_technology_code="FDM", material_group_code="PETG"
+    )
+    sla_result = service.plan(
+        part_name="Деталь", am_technology_code="SLA", material_group_code="RESIN_STD"
+    )
+
+    assert fdm_result.quality_standard.tolerance_mm != sla_result.quality_standard.tolerance_mm
+
+
+def test_plan_attaches_quality_effect_note_to_postprocessing_step_with_known_tooling(
+    tmp_path: Path,
+):
+    """SLA-постобработка (шлифовка/полировка, SANDING_KIT) должна нести
+    примечание об улучшении точности/шероховатости из
+    postprocessing_quality_effect; шаги без прямого соответствия
+    (например, срезание поддержек) остаются без примечания, а не с
+    выдуманной оценкой."""
+    service = _service(tmp_path)
+    result = service.plan(
+        part_name="Крышка", am_technology_code="FDM", material_group_code="PETG"
+    )
+
+    sanding_steps = [
+        step
+        for step in result.postprocessing_steps
+        if "шлифовки" in step.pp_tooling_type_name or "полировки" in step.pp_tooling_type_name
+    ]
+    assert sanding_steps
+    assert all(step.quality_effect_note is not None for step in sanding_steps)

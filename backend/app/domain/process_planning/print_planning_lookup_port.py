@@ -37,6 +37,31 @@ class PpToolingStepRecord:
     typical_order: int | None
 
 
+@dataclass(frozen=True)
+class TechnologyToleranceRecord:
+    tolerance_min_mm: float
+    tolerance_max_mm: float
+    min_wall_thickness_mm: float
+    max_wall_thickness_mm: float | None
+    roughness_ra_raw_min_um: float
+    roughness_ra_raw_max_um: float
+    roughness_ra_finished_min_um: float | None
+    roughness_ra_finished_max_um: float | None
+    min_thread_pitch_mm: float | None
+    assembly_clearance_min_mm: float | None
+    assembly_clearance_max_mm: float | None
+    source_note: str
+
+
+@dataclass(frozen=True)
+class PostprocessingEffectRecord:
+    method_name: str
+    tolerance_improvement_min_percent: float
+    tolerance_improvement_max_percent: float
+    roughness_reduction_factor_min: float
+    roughness_reduction_factor_max: float
+
+
 class IPrintPlanningLookup(Protocol):
     def find_am_technology_id_by_code(self, code: str) -> int | None: ...
     def find_material_group(
@@ -49,3 +74,9 @@ class IPrintPlanningLookup(Protocol):
     def find_postprocessing_steps_for_material_group(
         self, am_material_group_id: int
     ) -> tuple[PpToolingStepRecord, ...]: ...
+    def find_technology_tolerance(
+        self, am_technology_id: int
+    ) -> TechnologyToleranceRecord | None: ...
+    def find_postprocessing_effect_for_tooling_type(
+        self, pp_tooling_type_id: int
+    ) -> PostprocessingEffectRecord | None: ...

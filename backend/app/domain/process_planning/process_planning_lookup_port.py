@@ -34,6 +34,21 @@ class ToolingTypeRecord:
     name: str
 
 
+@dataclass(frozen=True)
+class MachiningRequirementRecord:
+    code: str
+    formulation_template: str
+    reference_standard: str | None
+    notes: str | None
+
+
+@dataclass(frozen=True)
+class SurfaceHardeningMethodRecord:
+    method_name: str
+    reference_instruction: str
+    applicable_to: str | None
+
+
 class IProcessPlanningLookup(Protocol):
     def find_material_group_id(self, material_grade: str) -> int | None: ...
     def find_workpiece_type_id_by_code(self, code: str) -> int | None: ...
@@ -49,3 +64,10 @@ class IProcessPlanningLookup(Protocol):
     def find_tooling_types_for_operation_type(
         self, operation_type_id: int
     ) -> tuple[ToolingTypeRecord, ...]: ...
+    def find_operation_type_id_by_code(self, code: str) -> int | None: ...
+    def find_machining_requirements_for_operation_types(
+        self, operation_type_ids: tuple[int, ...]
+    ) -> tuple[MachiningRequirementRecord, ...]: ...
+    def find_surface_hardening_methods_for_material_group(
+        self, material_group_id: int
+    ) -> tuple[SurfaceHardeningMethodRecord, ...]: ...

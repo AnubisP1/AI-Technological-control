@@ -65,3 +65,24 @@ def test_plan_returns_warning_when_material_not_in_nsi(tmp_path: Path):
     assert result.is_empty
     assert len(result.warnings) == 1
     assert "не найден в справочнике" in result.warnings[0]
+
+
+def test_plan_includes_typical_technical_requirements_from_ost_1_02504_84(tmp_path: Path):
+    """Сталь 45 (STEEL_CARBON) должна получить и общие пункты табл. 11
+    (не привязанные к operation_type_id), и пункты табл. 16 упрочнения,
+    применимые к сталям — см. seed_typical_technical_requirements.sql."""
+    service = _service(tmp_path)
+    result = service.plan(part_name="Вал", material_grade="45 ГОСТ 1050-2013")
+
+    codes_text = " ".join(req.text for req in result.technical_requirements)
+    assert "Неуказанные предельные отклонения размеров" in codes_text
+    assert "Виброшлифование" in codes_text
+    assert any(req.reference_standard == "ОСТ 1 00022-80" for req in result.technical_requirements)
+
+
+def test_plan_excludes_aluminum_only_hardening_methods_for_steel(tmp_path: Path):
+    service = _service(tmp_path)
+    result = service.plan(part_name="Вал", material_grade="45 ГОСТ 1050-2013")
+
+    method_names = [req.text for req in result.technical_requirements]
+    assert not any("Дробеструйный метод" in text for text in method_names)
