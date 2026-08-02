@@ -19,8 +19,16 @@
   --color-bg: #F7F8FA;
   --color-surface: #FFFFFF;
   --color-dark: #101216;
-  --color-accent: #1B5CFF;
-  --color-accent-soft: #7DA8FF;
+  /*
+   * ВНИМАНИЕ: используем --color-brand, не --color-accent — имя
+   * "accent" уже занято семантическим токеном shadcn/ui (hover/highlight
+   * фон меню и т.п., переопределяется под тёмную/светлую тему ниже) и
+   * @theme inline перезаписал бы это значение бледно-голубым EAF0FF из
+   * shadcn, а не нашим ярким брендовым синим — так уже случалось (Фаза 11,
+   * иконки становились едва видимыми из-за коллизии имён).
+   */
+  --color-brand: #1B5CFF;
+  --color-brand-soft: #7DA8FF;
   --color-ink: #101216;
   --color-ink-dim: #6B7280;
 
