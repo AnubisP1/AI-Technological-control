@@ -36,6 +36,12 @@ def test_print_route_card_endpoint_generates_process_and_postprocessing_cards():
     assert body["process_card"]["row"][0] == "SLA"
     assert len(body["postprocessing_card"]["rows"]) > 0
     assert body["warnings"] == []
+    # Допуски/шероховатость по технологии (inner.su, am_technology_tolerance)
+    # должны попадать в карту техпроцесса печати.
+    quality_standard = body["process_card"]["quality_standard"]
+    assert quality_standard is not None
+    assert quality_standard["tolerance_mm"].startswith("±")
+    assert "inner.su" in quality_standard["source_note"]
 
 
 def test_print_route_card_endpoint_reports_warning_for_unknown_material():

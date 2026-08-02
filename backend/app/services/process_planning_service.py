@@ -19,7 +19,11 @@ equipment_type_workpiece_type, equipment_type_operation_type), без
 
 from __future__ import annotations
 
-from app.domain.process_planning.process_model import PlannedOperation, ProcessPlanningResult
+from app.domain.process_planning.process_model import (
+    PlannedOperation,
+    ProcessPlanningResult,
+    TechnicalRequirementLine,
+)
 from app.domain.process_planning.process_planning_lookup_port import IProcessPlanningLookup
 
 _DEFAULT_WORKPIECE_TYPE_CODE = "ROLLED_BAR"
@@ -94,6 +98,9 @@ class ProcessPlanningService:
             )
 
         operations = self._plan_operations(equipment_types, warnings)
+        technical_requirements = self._collect_technical_requirements(
+            operations, material_group_id
+        )
 
         return ProcessPlanningResult(
             part_name=part_name,
@@ -101,7 +108,41 @@ class ProcessPlanningService:
             workpiece_type_name=_DEFAULT_WORKPIECE_TYPE_CODE,
             operations=operations,
             warnings=tuple(warnings),
+            technical_requirements=technical_requirements,
         )
+
+    def _collect_technical_requirements(
+        self, operations: tuple[PlannedOperation, ...], material_group_id: int
+    ) -> tuple[TechnicalRequirementLine, ...]:
+        operation_type_ids = tuple(
+            {
+                self._lookup.find_operation_type_id_by_code(op.operation_type_code)
+                for op in operations
+            }
+            - {None}
+        )
+        machining_requirements = self._lookup.find_machining_requirements_for_operation_types(
+            operation_type_ids
+        )
+        hardening_methods = self._lookup.find_surface_hardening_methods_for_material_group(
+            material_group_id
+        )
+        lines = [
+            TechnicalRequirementLine(
+                text=req.formulation_template, reference_standard=req.reference_standard
+            )
+            for req in machining_requirements
+        ]
+        lines.extend(
+            TechnicalRequirementLine(
+                text=f"{method.method_name} ({method.applicable_to}) — {method.reference_instruction}"
+                if method.applicable_to
+                else f"{method.method_name} — {method.reference_instruction}",
+                reference_standard=method.reference_instruction,
+            )
+            for method in hardening_methods
+        )
+        return tuple(lines)
 
     def _plan_operations(self, equipment_types, warnings: list[str]) -> tuple[PlannedOperation, ...]:
         available_operation_types_by_equipment = {

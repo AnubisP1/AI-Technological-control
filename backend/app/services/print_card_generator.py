@@ -15,6 +15,7 @@ from app.domain.process_planning.print_card_model import (
     PostprocessingCard,
     PrintCardRow,
     PrintProcessCard,
+    QualityStandardInfo,
 )
 from app.domain.process_planning.print_process_model import PrintProcessPlanningResult
 
@@ -38,12 +39,32 @@ class PrintCardGenerator:
                 _NOT_CALCULATED,  # расход материала
             )
         )
-        return PrintProcessCard(part_name=planning_result.part_name, columns=columns, row=row)
+        qs = planning_result.quality_standard
+        quality_standard = (
+            QualityStandardInfo(
+                tolerance_mm=qs.tolerance_mm,
+                min_wall_thickness_mm=qs.min_wall_thickness_mm,
+                roughness_ra_raw_um=qs.roughness_ra_raw_um,
+                roughness_ra_finished_um=qs.roughness_ra_finished_um,
+                min_thread_pitch_mm=qs.min_thread_pitch_mm,
+                assembly_clearance_mm=qs.assembly_clearance_mm,
+                source_note=qs.source_note,
+            )
+            if qs
+            else None
+        )
+        return PrintProcessCard(
+            part_name=planning_result.part_name,
+            columns=columns,
+            row=row,
+            quality_standard=quality_standard,
+        )
 
     def generate_postprocessing_card(
         self, planning_result: PrintProcessPlanningResult, *, columns: tuple[str, ...]
     ) -> PostprocessingCard:
-        # columns: ["№ шага", "Операция", "Оборудование", "Длительность", "Температура"]
+        # columns: ["№ шага", "Операция", "Оборудование", "Длительность", "Температура",
+        #           "Влияние на точность/шероховатость"]
         rows = tuple(
             PrintCardRow(
                 values=(
@@ -52,6 +73,7 @@ class PrintCardGenerator:
                     _NOT_CALCULATED,  # конкретное оборудование — не подбирается на этой фазе
                     _NOT_CALCULATED,  # длительность
                     _NOT_CALCULATED,  # температура
+                    step.quality_effect_note or _NOT_CALCULATED,
                 )
             )
             for step in planning_result.postprocessing_steps

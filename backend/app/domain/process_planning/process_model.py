@@ -24,6 +24,15 @@ class PlannedOperation:
 
 
 @dataclass(frozen=True)
+class TechnicalRequirementLine:
+    """Одна строка технических требований — типовая формулировка из
+    ОСТ 1 02504-84 (табл. 11 механообработка, табл. 16 упрочнение)."""
+
+    text: str
+    reference_standard: str | None = None
+
+
+@dataclass(frozen=True)
 class ProcessPlanningResult:
     """Результат автоподбора техпроцесса — то, из чего строится
     маршрутная карта (Модуль 1.3)."""
@@ -33,6 +42,7 @@ class ProcessPlanningResult:
     workpiece_type_name: str | None
     operations: tuple[PlannedOperation, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    technical_requirements: tuple[TechnicalRequirementLine, ...] = field(default_factory=tuple)
 
     @property
     def is_empty(self) -> bool:

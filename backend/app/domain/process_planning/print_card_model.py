@@ -14,10 +14,22 @@ class PrintCardRow:
 
 
 @dataclass(frozen=True)
+class QualityStandardInfo:
+    tolerance_mm: str
+    min_wall_thickness_mm: str
+    roughness_ra_raw_um: str
+    roughness_ra_finished_um: str | None
+    min_thread_pitch_mm: str | None
+    assembly_clearance_mm: str | None
+    source_note: str
+
+
+@dataclass(frozen=True)
 class PrintProcessCard:
     part_name: str | None
     columns: tuple[str, ...]
     row: PrintCardRow
+    quality_standard: QualityStandardInfo | None = None
 
 
 @dataclass(frozen=True)

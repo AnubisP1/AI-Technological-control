@@ -25,3 +25,4 @@ class RouteCard:
     gost_form: str | None
     columns: tuple[str, ...]
     rows: tuple[RouteCardRow, ...]
+    technical_requirements: tuple[str, ...] = ()

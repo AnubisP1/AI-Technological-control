@@ -9,7 +9,9 @@ from app.domain.material_text import extract_grade_part, normalize_grade
 from app.domain.process_planning.process_planning_lookup_port import (
     EquipmentModelRecord,
     EquipmentTypeRecord,
+    MachiningRequirementRecord,
     OperationTypeRecord,
+    SurfaceHardeningMethodRecord,
     ToolingTypeRecord,
 )
 from app.infrastructure.db.nsi_db import connect
@@ -119,5 +121,66 @@ class SqliteProcessPlanningLookup:
                 (operation_type_id,),
             ).fetchall()
             return tuple(ToolingTypeRecord(id=row["id"], name=row["name"]) for row in rows)
+        finally:
+            connection.close()
+
+    def find_operation_type_id_by_code(self, code: str) -> int | None:
+        connection = connect(self._metal_db_path)
+        try:
+            row = connection.execute(
+                "SELECT id FROM operation_type WHERE code = ?", (code,)
+            ).fetchone()
+            return row["id"] if row else None
+        finally:
+            connection.close()
+
+    def find_machining_requirements_for_operation_types(
+        self, operation_type_ids: tuple[int, ...]
+    ) -> tuple[MachiningRequirementRecord, ...]:
+        connection = connect(self._metal_db_path)
+        try:
+            placeholders = ",".join("?" for _ in operation_type_ids)
+            rows = connection.execute(
+                f"""
+                SELECT code, formulation_template, reference_standard, notes
+                FROM machining_requirement_template
+                WHERE operation_type_id IS NULL
+                   OR operation_type_id IN ({placeholders})
+                """,
+                operation_type_ids,
+            ).fetchall()
+            return tuple(
+                MachiningRequirementRecord(
+                    code=row["code"],
+                    formulation_template=row["formulation_template"],
+                    reference_standard=row["reference_standard"],
+                    notes=row["notes"],
+                )
+                for row in rows
+            )
+        finally:
+            connection.close()
+
+    def find_surface_hardening_methods_for_material_group(
+        self, material_group_id: int
+    ) -> tuple[SurfaceHardeningMethodRecord, ...]:
+        connection = connect(self._metal_db_path)
+        try:
+            rows = connection.execute(
+                """
+                SELECT method_name, reference_instruction, applicable_to
+                FROM surface_hardening_method
+                WHERE material_group_id IS NULL OR material_group_id = ?
+                """,
+                (material_group_id,),
+            ).fetchall()
+            return tuple(
+                SurfaceHardeningMethodRecord(
+                    method_name=row["method_name"],
+                    reference_instruction=row["reference_instruction"],
+                    applicable_to=row["applicable_to"],
+                )
+                for row in rows
+            )
         finally:
             connection.close()
