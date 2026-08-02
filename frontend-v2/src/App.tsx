@@ -1,11 +1,10 @@
 import { BrowserRouter, Routes, Route } from 'react-router'
-import { Network } from 'lucide-react'
 import { AppShell } from '@/components/layout/AppShell'
 import { LandingPage } from '@/routes/LandingPage'
-import { ModulePlaceholder } from '@/routes/ModulePlaceholder'
 import { AnalysisPage } from '@/routes/AnalysisPage'
 import { ProductionPage } from '@/routes/ProductionPage'
 import { QualityPage } from '@/routes/QualityPage'
+import { DigitalTwinPage } from '@/routes/DigitalTwinPage'
 import { WorkflowProvider } from '@/lib/workflow'
 
 function App() {
@@ -42,7 +41,7 @@ function App() {
             path="/app/digital-twin"
             element={
               <AppShell>
-                <ModulePlaceholder icon={Network} title="Цифровой двойник" phase="Фазе 14" />
+                <DigitalTwinPage />
               </AppShell>
             }
           />
