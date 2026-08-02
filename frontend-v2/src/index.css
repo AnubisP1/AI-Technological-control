@@ -1,0 +1,181 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/manrope";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Токены палитры/типографики — перенос уже одобренных пользователем
+ * значений из pitch-артефакта (Фаза 8) и дословно из
+ * UI UX reference/factory digital twin.html для тёмной cyan/teal темы
+ * экрана цифрового двойника (см. dev/PLAN.md, Фаза 9). Имена
+ * --background/--foreground/--card/--primary и т.д. — стандартные
+ * токены shadcn/ui (используются его компонентами через @theme inline
+ * ниже), их СМЫСЛ не меняем, меняем только значения под наш бренд.
+ */
+@theme {
+  --color-bg: #F7F8FA;
+  --color-surface: #FFFFFF;
+  --color-dark: #101216;
+  --color-accent: #1B5CFF;
+  --color-accent-soft: #7DA8FF;
+  --color-ink: #101216;
+  --color-ink-dim: #6B7280;
+
+  /* Цифровой двойник (Фаза 14) — палитра из factory digital twin.html */
+  --color-twin-bg: #070b12;
+  --color-twin-panel: #0d131d;
+  --color-twin-panel-light: #111a26;
+  --color-twin-border: #1c2938;
+  --color-twin-text: #edf4fb;
+  --color-twin-muted: #74869a;
+  --color-twin-cyan: #25e2d1;
+  --color-twin-blue: #3188ff;
+  --color-twin-green: #37df91;
+  --color-twin-yellow: #ffc857;
+  --color-twin-orange: #ff8a4c;
+  --color-twin-red: #ff5364;
+  --color-twin-purple: #a984ff;
+
+  --font-display: "Manrope Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  color-scheme: light;
+  --background: #F7F8FA;
+  --foreground: #101216;
+  --card: #FFFFFF;
+  --card-foreground: #101216;
+  --popover: #FFFFFF;
+  --popover-foreground: #101216;
+  --primary: #1B5CFF;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F0F3FA;
+  --secondary-foreground: #101216;
+  --muted: #F0F3FA;
+  --muted-foreground: #6B7280;
+  --accent: #EAF0FF;
+  --accent-foreground: #1B5CFF;
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: #E6EAF2;
+  --input: #E6EAF2;
+  --ring: #7DA8FF;
+  --chart-1: #1B5CFF;
+  --chart-2: #7DA8FF;
+  --chart-3: #25e2d1;
+  --chart-4: #37df91;
+  --chart-5: #a984ff;
+  --radius: 0.75rem;
+  --sidebar: #101216;
+  --sidebar-foreground: #F2F4F8;
+  --sidebar-primary: #1B5CFF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #F2F4F8;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #7DA8FF;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+@theme inline {
+  --font-sans: var(--font-display);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+.dark {
+  --background: #101216;
+  --foreground: #F2F4F8;
+  --card: #15181F;
+  --card-foreground: #F2F4F8;
+  --popover: #15181F;
+  --popover-foreground: #F2F4F8;
+  --primary: #5C8CFF;
+  --primary-foreground: #0B0D11;
+  --secondary: #1B1F27;
+  --secondary-foreground: #F2F4F8;
+  --muted: #1B1F27;
+  --muted-foreground: #9AA3B2;
+  --accent: #1B1F27;
+  --accent-foreground: #7DA8FF;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #262B35;
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: #5C8CFF;
+  --chart-1: #5C8CFF;
+  --chart-2: #7DA8FF;
+  --chart-3: #25e2d1;
+  --chart-4: #37df91;
+  --chart-5: #a984ff;
+  --sidebar: #0B0D11;
+  --sidebar-foreground: #F2F4F8;
+  --sidebar-primary: #5C8CFF;
+  --sidebar-primary-foreground: #0B0D11;
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: #F2F4F8;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #5C8CFF;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
