@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { Download } from 'lucide-react'
+import { Download, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PartViewer } from '@/components/PartViewer'
 import { Container } from '@/components/marketing/Section'
@@ -9,6 +10,7 @@ import { UploadPanel, type MaterialKind } from '@/components/analysis/UploadPane
 import { ReviewTree } from '@/components/analysis/ReviewTree'
 import { CardTable } from '@/components/analysis/CardTable'
 import { MaterialRecommendation } from '@/components/analysis/MaterialRecommendation'
+import { useWorkflow } from '@/lib/workflow'
 import {
   analyzeKd,
   reviewKd,
@@ -46,6 +48,8 @@ const SEVERITY_STYLE: Record<string, string> = {
 }
 
 export function AnalysisPage() {
+  const navigate = useNavigate()
+  const { setPendingInput } = useWorkflow()
   const [materialKind, setMaterialKind] = useState<MaterialKind>('metal')
   const [drawing, setDrawing] = useState<File | null>(null)
   const [stepModel, setStepModel] = useState<File | null>(null)
@@ -75,6 +79,7 @@ export function AnalysisPage() {
         setReview(reviewResult)
         const card = await generateRouteCard({ drawing })
         setRouteCard(card)
+        setPendingInput({ kind: 'metal', drawing })
       } else {
         if (!stepModel || !selectedOption) throw new Error('Не выбрана модель или материал')
         const analysisResult = await analyzeKd({ stepModel })
@@ -85,6 +90,12 @@ export function AnalysisPage() {
           materialGroupCode: selectedOption.material_group_code,
         })
         setPrintCards(card)
+        setPendingInput({
+          kind: 'plastic',
+          stepModel,
+          amTechnologyCode: selectedOption.am_technology_code,
+          materialGroupCode: selectedOption.material_group_code,
+        })
       }
     },
   })
@@ -314,6 +325,19 @@ export function AnalysisPage() {
           {!analysis && !review && !routeCard && !printCards && (
             <div className="flex min-h-[300px] items-center justify-center rounded-2xl border border-dashed border-border text-sm text-ink-dim">
               Результат анализа появится здесь
+            </div>
+          )}
+
+          {(routeCard || printCards) && (
+            <div className="rounded-2xl border border-border bg-surface p-6">
+              <p className="mb-3 text-sm text-ink-dim">
+                Комплект технологической документации сформирован. Передайте его на
+                согласование главному технологу.
+              </p>
+              <Button onClick={() => navigate('/app/production')}>
+                Перейти к согласованию
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </div>
           )}
         </div>

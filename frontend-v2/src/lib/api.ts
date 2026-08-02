@@ -256,3 +256,126 @@ export async function fetchMaterialRecommendations(params: {
   })
   return parseJsonOrThrow(response)
 }
+
+// ---------- Модуль 2: согласование и симуляция изготовления ----------
+
+export interface ApprovalResult {
+  decision: 'approved' | 'rejected'
+  comment: string | null
+  can_start_simulation: boolean
+}
+
+export async function decideApproval(params: {
+  decision: 'approved' | 'rejected'
+  comment?: string
+}): Promise<ApprovalResult> {
+  const query = new URLSearchParams({ decision: params.decision })
+  if (params.comment) query.append('comment', params.comment)
+  const response = await fetch(`${API_BASE}/manufacturing/approval?${query}`, { method: 'POST' })
+  return parseJsonOrThrow(response)
+}
+
+export interface SimulatedOperation {
+  sequence_no: number
+  name: string
+  machine_icon: string
+  machine_label: string
+  program_lines: string[]
+  duration_share: number
+}
+
+export interface SimulationPlan {
+  part_name: string | null
+  material_kind: string
+  total_seconds: number
+  operations: SimulatedOperation[]
+}
+
+export async function simulateMetalManufacturing(params: {
+  drawing: File
+}): Promise<{ plan: SimulationPlan; warnings: string[] }> {
+  const form = new FormData()
+  form.append('drawing', params.drawing)
+  const response = await fetch(`${API_BASE}/manufacturing/simulate/metal`, {
+    method: 'POST',
+    body: form,
+  })
+  return parseJsonOrThrow(response)
+}
+
+export async function simulatePrintManufacturing(params: {
+  stepModel: File
+  amTechnologyCode: string
+  materialGroupCode: string
+}): Promise<{ plan: SimulationPlan; warnings: string[] }> {
+  const form = new FormData()
+  form.append('step_model', params.stepModel)
+  const query = new URLSearchParams({
+    am_technology_code: params.amTechnologyCode,
+    material_group_code: params.materialGroupCode,
+  })
+  const response = await fetch(`${API_BASE}/manufacturing/simulate/print?${query}`, {
+    method: 'POST',
+    body: form,
+  })
+  return parseJsonOrThrow(response)
+}
+
+// ---------- Модуль 3: оценка качества по фото ----------
+
+export type QualityVerdict = 'ok' | 'defective' | 'inconclusive'
+
+export interface SerialProductionPlan {
+  operation_count: number
+  estimated_cycle_time_minutes: number
+  estimated_batch_100_duration_days: number
+  estimated_unit_cost_rub: number
+  risk_level: string
+  estimated_defect_rate_percent: number
+  workshop_load_notes: string[]
+  is_demonstration_estimate: boolean
+}
+
+export interface QualityReport {
+  verdict: QualityVerdict
+  similarity_score: number
+  notes: string[]
+  serial_production_plan: SerialProductionPlan | null
+  optimization_suggestions: string[]
+  remediation_recommendations: string[]
+}
+
+export async function assessQualityMetal(params: {
+  drawing: File
+  referencePhoto: File
+  actualPhoto: File
+}): Promise<QualityReport> {
+  const form = new FormData()
+  form.append('drawing', params.drawing)
+  form.append('reference_photo', params.referencePhoto)
+  form.append('actual_photo', params.actualPhoto)
+  const response = await fetch(`${API_BASE}/quality/assess/metal`, { method: 'POST', body: form })
+  return parseJsonOrThrow(response)
+}
+
+export async function assessQualityPrint(params: {
+  stepModel: File
+  referencePhoto: File
+  actualPhoto: File
+  amTechnologyCode: string
+  materialGroupCode: string
+}): Promise<QualityReport> {
+  const form = new FormData()
+  form.append('step_model', params.stepModel)
+  form.append('reference_photo', params.referencePhoto)
+  form.append('actual_photo', params.actualPhoto)
+  const query = new URLSearchParams({
+    am_technology_code: params.amTechnologyCode,
+    material_group_code: params.materialGroupCode,
+  })
+  const response = await fetch(`${API_BASE}/quality/assess/print?${query}`, {
+    method: 'POST',
+    body: form,
+  })
+  return parseJsonOrThrow(response)
+}
