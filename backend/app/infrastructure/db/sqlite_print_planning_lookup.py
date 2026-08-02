@@ -7,6 +7,9 @@ from pathlib import Path
 
 from app.domain.process_planning.print_planning_lookup_port import (
     AmMaterialGroupRecord,
+    MaterialRecommendationRow,
+    OperatingConditionRecord,
+    PartApplicationClassRecord,
     PostprocessingEffectRecord,
     PpToolingStepRecord,
     PrinterModelRecord,
@@ -176,6 +179,156 @@ class SqlitePrintPlanningLookup:
                 tolerance_improvement_max_percent=row["tolerance_improvement_max_percent"],
                 roughness_reduction_factor_min=row["roughness_reduction_factor_min"],
                 roughness_reduction_factor_max=row["roughness_reduction_factor_max"],
+            )
+        finally:
+            connection.close()
+
+    def find_part_application_classes(self) -> tuple[PartApplicationClassRecord, ...]:
+        connection = connect(self._additive_db_path)
+        try:
+            rows = connection.execute(
+                "SELECT id, code, name, description FROM part_application_class ORDER BY id"
+            ).fetchall()
+            return tuple(
+                PartApplicationClassRecord(
+                    id=row["id"],
+                    code=row["code"],
+                    name=row["name"],
+                    description=row["description"],
+                )
+                for row in rows
+            )
+        finally:
+            connection.close()
+
+    def find_part_application_class_by_code(
+        self, code: str
+    ) -> PartApplicationClassRecord | None:
+        connection = connect(self._additive_db_path)
+        try:
+            row = connection.execute(
+                "SELECT id, code, name, description FROM part_application_class WHERE code = ?",
+                (code,),
+            ).fetchone()
+            if row is None:
+                return None
+            return PartApplicationClassRecord(
+                id=row["id"], code=row["code"], name=row["name"], description=row["description"]
+            )
+        finally:
+            connection.close()
+
+    def find_operating_conditions(
+        self, part_application_class_id: int | None = None
+    ) -> tuple[OperatingConditionRecord, ...]:
+        connection = connect(self._additive_db_path)
+        try:
+            if part_application_class_id is None:
+                rows = connection.execute(
+                    """
+                    SELECT id, condition_type, code, name, range_min, range_max, unit, description
+                    FROM operating_condition
+                    ORDER BY condition_type, id
+                    """
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT oc.id, oc.condition_type, oc.code, oc.name, oc.range_min, oc.range_max,
+                           oc.unit, oc.description
+                    FROM operating_condition oc
+                    JOIN part_application_class_typical_condition tc
+                        ON tc.operating_condition_id = oc.id
+                    WHERE tc.part_application_class_id = ?
+                    ORDER BY oc.condition_type, oc.id
+                    """,
+                    (part_application_class_id,),
+                ).fetchall()
+            return tuple(
+                OperatingConditionRecord(
+                    id=row["id"],
+                    condition_type=row["condition_type"],
+                    code=row["code"],
+                    name=row["name"],
+                    range_min=row["range_min"],
+                    range_max=row["range_max"],
+                    unit=row["unit"],
+                    description=row["description"],
+                )
+                for row in rows
+            )
+        finally:
+            connection.close()
+
+    def find_operating_condition_ids_by_codes(self, codes: tuple[str, ...]) -> dict[str, int]:
+        """Возвращает только реально найденные код->id соответствия — код,
+        отсутствующий в результирующем словаре, значит не найден в
+        справочнике (вызывающий сервис явно предупреждает об этом,
+        а не подменяет отсутствие тихим пропуском)."""
+        if not codes:
+            return {}
+        connection = connect(self._additive_db_path)
+        try:
+            placeholders = ",".join("?" for _ in codes)
+            rows = connection.execute(
+                f"SELECT code, id FROM operating_condition WHERE code IN ({placeholders})",
+                codes,
+            ).fetchall()
+            return {row["code"]: row["id"] for row in rows}
+        finally:
+            connection.close()
+
+    def find_material_recommendations(
+        self, part_application_class_id: int, operating_condition_ids: tuple[int, ...]
+    ) -> tuple[MaterialRecommendationRow, ...]:
+        """operating_condition_ids пустой — возвращает базовые рекомендации
+        (operating_condition_id IS NULL в БД), не привязанные к конкретным
+        условиям эксплуатации. Откат с условий на базовые при пустом
+        результате — ответственность вызывающего сервиса (там же явный
+        warning), не этого метода: лукап отражает ровно то, что нашёл."""
+        connection = connect(self._additive_db_path)
+        try:
+            if operating_condition_ids:
+                placeholders = ",".join("?" for _ in operating_condition_ids)
+                condition_clause = f"amr.operating_condition_id IN ({placeholders})"
+                params: tuple = (part_application_class_id, *operating_condition_ids)
+            else:
+                condition_clause = "amr.operating_condition_id IS NULL"
+                params = (part_application_class_id,)
+
+            rows = connection.execute(
+                f"""
+                SELECT amr.priority, amr.rationale, amr.min_infill_percent,
+                       amr.recommended_wall_count, amr.orientation_note,
+                       amg.code AS material_group_code, amg.name AS material_group_name,
+                       t.code AS am_technology_code, t.name AS am_technology_name,
+                       rs.source_type, rs.title AS source_title, rs.reliability AS source_reliability
+                FROM application_material_recommendation amr
+                JOIN am_material_group amg ON amg.id = amr.am_material_group_id
+                JOIN am_technology t ON t.id = amr.am_technology_id
+                JOIN recommendation_source rs ON rs.id = amr.recommendation_source_id
+                WHERE amr.part_application_class_id = ?
+                  AND {condition_clause}
+                ORDER BY amr.priority
+                """,
+                params,
+            ).fetchall()
+            return tuple(
+                MaterialRecommendationRow(
+                    priority=row["priority"],
+                    am_technology_code=row["am_technology_code"],
+                    am_technology_name=row["am_technology_name"],
+                    material_group_code=row["material_group_code"],
+                    material_group_name=row["material_group_name"],
+                    rationale=row["rationale"],
+                    source_type=row["source_type"],
+                    source_title=row["source_title"],
+                    source_reliability=row["source_reliability"],
+                    min_infill_percent=row["min_infill_percent"],
+                    recommended_wall_count=row["recommended_wall_count"],
+                    orientation_note=row["orientation_note"],
+                )
+                for row in rows
             )
         finally:
             connection.close()

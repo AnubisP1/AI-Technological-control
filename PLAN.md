@@ -113,9 +113,9 @@
 - ✅ 3D-вьюер spike (параметрическая модель по реальным размерам STEP), проверен вживую на реальном fixture.
 - DoD выполнен: `npm run build` чистый, `pytest` backend 99/99, визуальная проверка через Playwright.
 
-## Фаза 10 — Backend: автоподбор материала для пластика (БПЛА-домен)
+## Фаза 10 — Backend: автоподбор материала для пластика (БПЛА-домен) ✅ завершена (см. PROGRESS.md)
 
-- ⬜ Домен `MaterialRecommendationOption`/`MaterialRecommendationResult`, 3 новых метода `IPrintPlanningLookup`, `MaterialRecommendationService`, 3 новых эндпоинта (`/print/part-application-classes`, `/print/operating-conditions`, `/print/material-recommendations`) — читают уже засеянные, но не подключённые таблицы `part_application_class`/`operating_condition`/`application_material_recommendation` в additive-НСИ. Существующие `/print/route-card` и др. не меняются.
+- ✅ Домен `MaterialRecommendationOption`/`MaterialRecommendationResult`, порт `IPrintPlanningLookup` расширен 6 методами (классы применения, условия эксплуатации, рекомендации материала), `MaterialRecommendationService` (откат на базовую рекомендацию класса при отсутствии данных под условия, с явным warning), 3 новых эндпоинта (`GET /print/part-application-classes`, `GET /print/operating-conditions`, `POST /print/material-recommendations`) — читают уже засеянные таблицы `part_application_class`/`operating_condition`/`application_material_recommendation` additive-НСИ. Существующие `/print/route-card` и др. не изменены (проверено diff'ом).
 
 ## Фаза 11 — Главная страница + оболочка приложения
 

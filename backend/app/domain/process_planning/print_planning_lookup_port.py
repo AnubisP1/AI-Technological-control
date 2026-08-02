@@ -62,6 +62,42 @@ class PostprocessingEffectRecord:
     roughness_reduction_factor_max: float
 
 
+@dataclass(frozen=True)
+class PartApplicationClassRecord:
+    id: int
+    code: str
+    name: str
+    description: str | None
+
+
+@dataclass(frozen=True)
+class OperatingConditionRecord:
+    id: int
+    condition_type: str
+    code: str
+    name: str
+    range_min: float | None
+    range_max: float | None
+    unit: str | None
+    description: str | None
+
+
+@dataclass(frozen=True)
+class MaterialRecommendationRow:
+    priority: int
+    am_technology_code: str
+    am_technology_name: str
+    material_group_code: str
+    material_group_name: str
+    rationale: str
+    source_type: str
+    source_title: str
+    source_reliability: str
+    min_infill_percent: float | None
+    recommended_wall_count: int | None
+    orientation_note: str | None
+
+
 class IPrintPlanningLookup(Protocol):
     def find_am_technology_id_by_code(self, code: str) -> int | None: ...
     def find_material_group(
@@ -80,3 +116,14 @@ class IPrintPlanningLookup(Protocol):
     def find_postprocessing_effect_for_tooling_type(
         self, pp_tooling_type_id: int
     ) -> PostprocessingEffectRecord | None: ...
+    def find_part_application_classes(self) -> tuple[PartApplicationClassRecord, ...]: ...
+    def find_part_application_class_by_code(
+        self, code: str
+    ) -> PartApplicationClassRecord | None: ...
+    def find_operating_conditions(
+        self, part_application_class_id: int | None = None
+    ) -> tuple[OperatingConditionRecord, ...]: ...
+    def find_operating_condition_ids_by_codes(self, codes: tuple[str, ...]) -> dict[str, int]: ...
+    def find_material_recommendations(
+        self, part_application_class_id: int, operating_condition_ids: tuple[int, ...]
+    ) -> tuple[MaterialRecommendationRow, ...]: ...
