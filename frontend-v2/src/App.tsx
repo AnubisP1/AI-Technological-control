@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router'
-import { ScanSearch, Factory, ShieldCheck, Network } from 'lucide-react'
+import { Factory, ShieldCheck, Network } from 'lucide-react'
 import { AppShell } from '@/components/layout/AppShell'
 import { LandingPage } from '@/routes/LandingPage'
 import { ModulePlaceholder } from '@/routes/ModulePlaceholder'
+import { AnalysisPage } from '@/routes/AnalysisPage'
 
 function App() {
   return (
@@ -13,7 +14,7 @@ function App() {
           path="/app/analysis"
           element={
             <AppShell>
-              <ModulePlaceholder icon={ScanSearch} title="Анализ детали" phase="Фазе 12" />
+              <AnalysisPage />
             </AppShell>
           }
         />
