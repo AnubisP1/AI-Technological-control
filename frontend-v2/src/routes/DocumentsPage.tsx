@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { FileText, Download } from 'lucide-react'
+import { FileText, Download, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
+import { PdfPreviewModal } from '@/components/documents/PdfPreviewModal'
 import { useWorkflow } from '@/lib/workflow'
 import {
   downloadKdReviewPdf,
@@ -43,7 +45,7 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-function DocCard({ doc }: { doc: DocEntry }) {
+function DocCard({ doc, onPreview }: { doc: DocEntry; onPreview: (doc: DocEntry) => void }) {
   const mutation = useMutation({
     mutationFn: async () => {
       const blob = await doc.download()
@@ -52,15 +54,34 @@ function DocCard({ doc }: { doc: DocEntry }) {
   })
 
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-surface p-5">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onPreview(doc)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onPreview(doc)
+      }}
+      className="flex cursor-pointer flex-col rounded-2xl border border-border bg-surface p-5 text-left transition-shadow hover:shadow-lg hover:shadow-brand/5"
+    >
       <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-brand/10 text-brand">
         <FileText className="h-4 w-4" />
       </div>
       <h3 className="mb-1 text-sm font-semibold text-ink">{doc.title}</h3>
       <p className="mb-4 flex-1 text-xs leading-relaxed text-ink-dim">{doc.description}</p>
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-ink-dim">{doc.format}</span>
-        <Button size="sm" variant="secondary" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+        <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-ink-dim">
+          <Eye className="h-3 w-3" />
+          {doc.format} · просмотр
+        </span>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={mutation.isPending}
+          onClick={(e) => {
+            e.stopPropagation()
+            mutation.mutate()
+          }}
+        >
           <Download className="h-3.5 w-3.5" />
           {mutation.isPending ? 'Формирование…' : 'Скачать'}
         </Button>
@@ -76,6 +97,7 @@ function DocCard({ doc }: { doc: DocEntry }) {
 
 export function DocumentsPage() {
   const { pendingInput } = useWorkflow()
+  const [previewDoc, setPreviewDoc] = useState<DocEntry | null>(null)
 
   const metalDocs: DocEntry[] =
     pendingInput?.kind === 'metal'
@@ -147,10 +169,20 @@ export function DocumentsPage() {
       {pendingInput && docs.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {docs.map((doc) => (
-            <DocCard key={doc.id} doc={doc} />
+            <DocCard key={doc.id} doc={doc} onPreview={setPreviewDoc} />
           ))}
         </div>
       )}
+
+      <PdfPreviewModal
+        open={previewDoc !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewDoc(null)
+        }}
+        title={previewDoc?.title ?? ''}
+        filename={previewDoc?.filename ?? 'document.pdf'}
+        load={previewDoc?.download ?? null}
+      />
     </Container>
   )
 }

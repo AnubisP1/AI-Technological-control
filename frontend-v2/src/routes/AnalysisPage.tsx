@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { Download, ArrowRight } from 'lucide-react'
+import { Download, ArrowRight, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PartViewer } from '@/components/PartViewer'
 import { Container } from '@/components/marketing/Section'
@@ -10,6 +10,7 @@ import { UploadPanel, type MaterialKind } from '@/components/analysis/UploadPane
 import { ReviewTree } from '@/components/analysis/ReviewTree'
 import { CardTable } from '@/components/analysis/CardTable'
 import { MaterialRecommendation } from '@/components/analysis/MaterialRecommendation'
+import { PdfPreviewModal } from '@/components/documents/PdfPreviewModal'
 import { useWorkflow } from '@/lib/workflow'
 import {
   analyzeKd,
@@ -72,6 +73,11 @@ export function AnalysisPage() {
   const [review, setReview] = useState<KdReviewReport | null>(null)
   const [routeCard, setRouteCard] = useState<RouteCardType | null>(null)
   const [printCards, setPrintCards] = useState<PrintRouteCardResponse | null>(null)
+  const [previewTarget, setPreviewTarget] = useState<{
+    title: string
+    filename: string
+    download: () => Promise<Blob>
+  } | null>(null)
 
   const canAnalyze =
     materialKind === 'metal' ? Boolean(drawing) : Boolean(stepModel) && Boolean(selectedOption)
@@ -240,15 +246,32 @@ export function AnalysisPage() {
             <Card
               title="Отчёт об оценке КД"
               action={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={pdfMutation.isPending}
-                  onClick={() => pdfMutation.mutate()}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  {pdfMutation.isPending ? 'Формирование…' : 'PDF'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!drawing}
+                    onClick={() =>
+                      setPreviewTarget({
+                        title: 'Отчёт об оценке КД',
+                        filename: 'kd_review_report.pdf',
+                        download: () => downloadKdReviewPdf({ drawing: drawing! }),
+                      })
+                    }
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Просмотр
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={pdfMutation.isPending}
+                    onClick={() => pdfMutation.mutate()}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {pdfMutation.isPending ? 'Формирование…' : 'PDF'}
+                  </Button>
+                </div>
               }
             >
               <ReviewTree review={review} />
@@ -284,7 +307,22 @@ export function AnalysisPage() {
             <Card
               title={`Маршрутная карта — ${routeCard.part_name || 'деталь'}`}
               action={
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!drawing}
+                    onClick={() =>
+                      setPreviewTarget({
+                        title: 'Маршрутная карта',
+                        filename: 'route_card.pdf',
+                        download: () => downloadRouteCardPdf({ drawing: drawing! }),
+                      })
+                    }
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Просмотр МК
+                  </Button>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -293,6 +331,21 @@ export function AnalysisPage() {
                   >
                     <Download className="h-3.5 w-3.5" />
                     {routeCardPdfMutation.isPending ? 'Формирование…' : 'Скачать МК (PDF)'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!drawing}
+                    onClick={() =>
+                      setPreviewTarget({
+                        title: 'Операционная карта',
+                        filename: 'operation_card.pdf',
+                        download: () => downloadOperationCardPdf({ drawing: drawing! }),
+                      })
+                    }
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Просмотр ОК
                   </Button>
                   <Button
                     variant="secondary"
@@ -341,15 +394,37 @@ export function AnalysisPage() {
             <Card
               title={`Карта техпроцесса печати — ${printCards.process_card.part_name || 'деталь'}`}
               action={
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={printCardPdfMutation.isPending}
-                  onClick={() => printCardPdfMutation.mutate()}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  {printCardPdfMutation.isPending ? 'Формирование…' : 'Скачать карту (PDF)'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!stepModel || !selectedOption}
+                    onClick={() =>
+                      setPreviewTarget({
+                        title: 'Карта техпроцесса печати',
+                        filename: 'print_process_card.pdf',
+                        download: () =>
+                          downloadPrintRouteCardPdf({
+                            stepModel: stepModel!,
+                            amTechnologyCode: selectedOption!.am_technology_code,
+                            materialGroupCode: selectedOption!.material_group_code,
+                          }),
+                      })
+                    }
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Просмотр
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={printCardPdfMutation.isPending}
+                    onClick={() => printCardPdfMutation.mutate()}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {printCardPdfMutation.isPending ? 'Формирование…' : 'Скачать карту (PDF)'}
+                  </Button>
+                </div>
               }
             >
               <CardTable columns={printCards.process_card.columns} rows={[printCards.process_card.row]} />
@@ -403,17 +478,27 @@ export function AnalysisPage() {
           {(routeCard || printCards) && (
             <div className="rounded-2xl border border-border bg-surface p-6">
               <p className="mb-3 text-sm text-ink-dim">
-                Комплект технологической документации сформирован. Передайте его на
-                согласование главному технологу.
+                Комплект технологической документации сформирован. Следующий шаг — экспертиза
+                соответствия НСИ, затем согласование главным технологом.
               </p>
-              <Button onClick={() => navigate('/app/production')}>
-                Перейти к согласованию
+              <Button onClick={() => navigate('/app/nsi-expertise')}>
+                Перейти к экспертизе НСИ
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
           )}
         </div>
       </div>
+
+      <PdfPreviewModal
+        open={previewTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewTarget(null)
+        }}
+        title={previewTarget?.title ?? ''}
+        filename={previewTarget?.filename ?? 'document.pdf'}
+        load={previewTarget?.download ?? null}
+      />
     </Container>
   )
 }
