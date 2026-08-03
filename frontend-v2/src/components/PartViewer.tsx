@@ -2,6 +2,7 @@ import { Suspense, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Environment, Center } from '@react-three/drei'
 import { BoxGeometry } from 'three'
+import { cn } from '@/lib/utils'
 
 export interface PartViewerProps {
   lengthXMm: number
@@ -11,6 +12,7 @@ export interface PartViewerProps {
   autoRotate?: boolean
   hideOverlay?: boolean
   interactive?: boolean
+  transparentBackground?: boolean
 }
 
 /**
@@ -52,16 +54,27 @@ export function PartViewer({
   autoRotate = false,
   hideOverlay = false,
   interactive = true,
+  transparentBackground = false,
   ...props
 }: PartViewerProps) {
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-border bg-dark">
-      <Canvas camera={{ position: [3, 2, 3], fov: 40 }} shadows>
+    <div
+      className={cn(
+        'relative w-full h-full overflow-hidden',
+        transparentBackground ? '' : 'rounded-2xl border border-border bg-dark'
+      )}
+    >
+      <Canvas
+        camera={{ position: [3, 2, 3], fov: 40 }}
+        shadows
+        gl={{ alpha: transparentBackground }}
+        style={transparentBackground ? { background: 'transparent' } : undefined}
+      >
         <Suspense fallback={null}>
           <ambientLight intensity={0.4} />
           <directionalLight position={[4, 6, 4]} intensity={1.2} castShadow />
           <ProxyBox {...props} />
-          <Environment preset="city" />
+          {!transparentBackground && <Environment preset="city" />}
           <OrbitControls
             enablePan={false}
             enableZoom={interactive}

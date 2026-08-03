@@ -48,7 +48,7 @@ export function Hero() {
             AI-Технолог · производство БПЛА
           </div>
           <h1 className="text-4xl font-bold leading-[1.08] tracking-tight text-balance md:text-6xl">
-            От чертежа дрона до готовой техпроцесса —
+            От чертежа дрона до готового техпроцесса —
             <span className="text-brand-soft"> за минуты, не дни</span>
           </h1>
           <p className="max-w-lg text-lg leading-relaxed text-white/60">
