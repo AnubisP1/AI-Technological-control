@@ -41,6 +41,21 @@ export function HowItWorks() {
             Четыре модуля — один сквозной путь от КД до серии
           </h2>
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-80px' }}
+          transition={{ duration: 0.5 }}
+          className="mb-10 overflow-hidden rounded-2xl border border-border bg-surface"
+        >
+          <img
+            src="/production-architecture.gif"
+            alt="Схема цифрового контура технологической подготовки производства: от конструкторской документации до серийного производства"
+            className="w-full"
+          />
+        </motion.div>
+
         <div className="grid gap-5 md:grid-cols-2">
           {MODULES.map((module, index) => (
             <motion.div

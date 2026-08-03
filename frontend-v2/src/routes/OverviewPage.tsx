@@ -151,6 +151,18 @@ export function OverviewPage() {
       </div>
 
       <div className="mb-3 font-mono text-xs uppercase tracking-widest text-ink-dim">Сквозной путь системы</div>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="mb-6 overflow-hidden rounded-2xl border border-border bg-surface"
+      >
+        <img
+          src="/production-architecture.gif"
+          alt="Схема цифрового контура технологической подготовки производства: от конструкторской документации до серийного производства"
+          className="w-full"
+        />
+      </motion.div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {MODULES.map((m, i) => (
           <Link key={m.to} to={m.to}>
