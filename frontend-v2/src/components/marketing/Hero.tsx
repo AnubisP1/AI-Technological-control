@@ -62,7 +62,7 @@ export function Hero() {
               size="lg"
               className="h-11 px-5 text-sm"
               nativeButton={false}
-              render={<Link to="/app/analysis" />}
+              render={<Link to="/app/overview" />}
             >
               Открыть рабочее пространство
               <ArrowRight className="h-4 w-4" />
