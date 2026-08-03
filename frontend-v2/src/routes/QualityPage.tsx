@@ -6,8 +6,16 @@ import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
 import { PhotoDropzone } from '@/components/quality/PhotoDropzone'
 import { ScanOverlay } from '@/components/quality/ScanOverlay'
+import { PageBackdrop } from '@/components/PageBackdrop'
 import { useWorkflow } from '@/lib/workflow'
 import { assessQualityMetal, assessQualityPrint, type QualityReport } from '@/lib/api'
+
+// Реальные габариты полётного контроллера БПЛА из тестового fixture
+// (КД для тестов/Пластиковые детали/Архив/Holybro Kakute H7.STEP),
+// полученные через RegexStepParser — компактная электронная деталь
+// уместна на экране контроля дефектов (тема самого экрана — выявление
+// отклонений на готовом изделии).
+const BACKGROUND_PART = { partName: 'Holybro Kakute H7', lengthXMm: 34.5, lengthYMm: 9.0, lengthZMm: 36.5 }
 
 const VERDICT_META: Record<
   QualityReport['verdict'],
@@ -58,6 +66,7 @@ export function QualityPage() {
 
   return (
     <Container className="max-w-4xl py-10">
+      <PageBackdrop {...BACKGROUND_PART} />
       <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">Контроль качества</h1>
       <p className="mb-8 text-sm text-ink-dim">
         Сравнение фото изготовленной детали с эталоном (фото качественного изделия, рендер или

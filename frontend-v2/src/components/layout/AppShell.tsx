@@ -7,12 +7,14 @@ import {
   Network,
   Sparkles,
   Home,
+  ClipboardCheck,
 } from 'lucide-react'
 import { StatusPill } from '@/components/layout/StatusPill'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
   { to: '/app/analysis', label: 'Анализ детали', icon: ScanSearch },
+  { to: '/app/nsi-expertise', label: 'Экспертиза НСИ', icon: ClipboardCheck },
   { to: '/app/production', label: 'Производство', icon: Factory },
   { to: '/app/quality', label: 'Контроль качества', icon: ShieldCheck },
   { to: '/app/digital-twin', label: 'Цифровой двойник', icon: Network },

@@ -5,6 +5,7 @@ import { AnalysisPage } from '@/routes/AnalysisPage'
 import { ProductionPage } from '@/routes/ProductionPage'
 import { QualityPage } from '@/routes/QualityPage'
 import { DigitalTwinPage } from '@/routes/DigitalTwinPage'
+import { NsiExpertisePage } from '@/routes/NsiExpertisePage'
 import { WorkflowProvider } from '@/lib/workflow'
 
 function App() {
@@ -42,6 +43,14 @@ function App() {
             element={
               <AppShell>
                 <DigitalTwinPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/app/nsi-expertise"
+            element={
+              <AppShell>
+                <NsiExpertisePage />
               </AppShell>
             }
           />

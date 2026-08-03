@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, PlayCircle, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
 import { MachineIcon } from '@/components/production/MachineIcon'
+import { PageBackdrop } from '@/components/PageBackdrop'
 import { useSimulationClock, operationBoundaries, TOTAL_MS } from '@/lib/useSimulationClock'
 import { useWorkflow } from '@/lib/workflow'
 import {
@@ -15,6 +16,12 @@ import {
   type ApprovalResult,
   type SimulationPlan,
 } from '@/lib/api'
+
+// Реальные габариты пропеллера БПЛА из тестового fixture (КД для
+// тестов/Пластиковые детали/Архив/HQProp T5x3.STEP), полученные через
+// RegexStepParser — тонкая деталь хорошо иллюстрирует тему
+// производства/изготовления на этом экране.
+const BACKGROUND_PART = { partName: 'HQProp T5x3', lengthXMm: 127.0, lengthYMm: 3.0, lengthZMm: 14.0 }
 
 function ProgramOutput({ lines, revealCount }: { lines: string[]; revealCount: number }) {
   if (lines.length === 0) {
@@ -88,6 +95,7 @@ export function ProductionPage() {
   if (!approval?.can_start_simulation) {
     return (
       <Container className="max-w-2xl py-10">
+        <PageBackdrop {...BACKGROUND_PART} />
         <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">Производство</h1>
         <p className="mb-8 text-sm text-ink-dim">
           Согласование комплекта технологической документации главным технологом.
@@ -140,6 +148,7 @@ export function ProductionPage() {
 
   return (
     <Container className="max-w-3xl py-10">
+      <PageBackdrop {...BACKGROUND_PART} />
       <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">
         Комплект ТД согласован
       </h1>

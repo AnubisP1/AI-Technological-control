@@ -6,6 +6,19 @@
  * twin.html и visual factory.html (уже одобренные пользователем
  * референсы), симуляция значений — целиком на фронте, не запрос к
  * backend (согласовано в плане Фазы 9, см. dev/PLAN.md).
+ *
+ * Координаты зон (Фаза 17, часть 2) — переработаны с раскладки "сетка
+ * 3×3" на серпантинный линейный поток слева направо, затем справа
+ * налево на следующем ряду, с разворотом у одного и того же края
+ * (а не по диагонали через весь цех): исходная раскладка формально
+ * повторяла порядок операций реального техпроцесса (см.
+ * app/services/process_planning_service.py — черновая → чистовая →
+ * фрезерная/сверлильная → шлифовальная → контрольная), но из-за
+ * произвольного размещения по X линии материального потока каждый
+ * ряд шли справа налево и пересекали друг друга по диагонали через
+ * весь цех — визуально это читалось как случайная схема, хотя
+ * последовательность зон в списке была осмысленной. Порядок зон и
+ * связей (flows) не менялся, менялись только x/y.
  */
 
 export type ZoneStatus = 'online' | 'warning' | 'alert' | 'offline'
@@ -67,7 +80,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'cnc', name: 'Обработка ЧПУ', type: 'Механическая обработка',
-        x: 1, y: 4, w: 4, d: 3, height: 48, color: '#4c5c70',
+        x: 5, y: 4, w: 3, d: 3, height: 48, color: '#4c5c70',
         status: 'online', load: 91, cycle: '08:42', output: 154,
         description: 'Токарные и фрезерные обрабатывающие центры с автоматической сменой инструмента.',
         sensors: ['Вибрация шпинделя', 'Температура', 'Ток двигателя', 'Износ инструмента'],
@@ -75,7 +88,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'metal3d', name: 'SLM / DMLS', type: 'Аддитивное производство',
-        x: 6, y: 4, w: 3, d: 3, height: 52, color: '#596a7d',
+        x: 9, y: 4, w: 3, d: 3, height: 52, color: '#596a7d',
         status: 'warning', load: 62, cycle: '06:21:14', output: 18,
         description: 'Печать металлических деталей методом селективного лазерного плавления порошка.',
         sensors: ['Кислород', 'Камера слоя', 'Температура', 'Мощность лазера'],
@@ -83,7 +96,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'heat', name: 'Термообработка', type: 'Печи и охлаждение',
-        x: 10, y: 4, w: 3, d: 3, height: 58, color: '#5e5960',
+        x: 13, y: 4, w: 3, d: 3, height: 58, color: '#5e5960',
         status: 'online', load: 78, cycle: '01:35:00', output: 92,
         description: 'Закалка, отпуск, отжиг и контролируемое охлаждение металлических деталей.',
         sensors: ['Термопары', 'Газоанализатор', 'Давление', 'Контроль атмосферы'],
@@ -91,7 +104,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'surface', name: 'Обработка поверхности', type: 'Финишная обработка',
-        x: 2, y: 8, w: 3, d: 2, height: 35, color: '#4d6070',
+        x: 13, y: 8, w: 3, d: 2, height: 35, color: '#4d6070',
         status: 'online', load: 68, cycle: '05:36', output: 171,
         description: 'Шлифование, дробеструйная обработка, нанесение защитных и декоративных покрытий.',
         sensors: ['Толщина покрытия', 'Давление', 'Расход', 'Машинное зрение'],
@@ -99,7 +112,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'quality', name: 'Контроль качества', type: 'Измерительная лаборатория',
-        x: 6, y: 8, w: 3, d: 2, height: 32, color: '#46616d',
+        x: 9, y: 8, w: 3, d: 2, height: 32, color: '#46616d',
         status: 'online', load: 74, cycle: '03:12', output: 202,
         description: 'КИМ, 3D-сканирование, рентген и системы машинного зрения для неразрушающего контроля.',
         sensors: ['КИМ', '3D-сканер', 'Рентген', 'Камеры'],
@@ -107,7 +120,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'assembly', name: 'Сборка', type: 'Роботизированная линия',
-        x: 10, y: 8, w: 3, d: 2, height: 38, color: '#516274',
+        x: 5, y: 8, w: 3, d: 2, height: 38, color: '#516274',
         status: 'online', load: 84, cycle: '01:48', output: 184,
         description: 'Сборочные роботы, сервопрессы, сварочные посты и автоматическая маркировка.',
         sensors: ['Контроль момента', 'Камеры', 'Датчики усилия', 'Сканеры кодов'],
@@ -115,7 +128,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'finished', name: 'Готовая продукция', type: 'Склад и отгрузка',
-        x: 14, y: 8, w: 3, d: 2, height: 27, color: '#48586b',
+        x: 1, y: 8, w: 3, d: 2, height: 27, color: '#48586b',
         status: 'online', load: 65, cycle: '—', output: 176,
         description: 'Упаковка, адресное хранение, комплектация партий и подготовка продукции к отгрузке.',
         sensors: ['RFID', 'Весы', 'Штрихкоды', 'Камеры'],
@@ -158,32 +171,32 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
         protocols: ['EUROMAP 77', 'OPC UA', 'PROFINET'],
       },
       {
-        id: 'cr30', name: 'FDM CR-30', type: 'Конвейерная 3D-печать',
-        x: 1, y: 4, w: 4, d: 3, height: 45, color: '#4c5c70',
-        status: 'online', load: 76, cycle: '02:48:12', output: 64,
-        description: 'Ферма конвейерных FDM-принтеров для непрерывного производства длинных деталей.',
-        sensors: ['Температура сопла', 'Температура стола', 'Филамент', 'Камера'],
-        protocols: ['OctoPrint API', 'MQTT', 'Wi-Fi'],
-      },
-      {
-        id: 'bambu', name: 'FDM Bambu Lab', type: 'Ферма FDM-принтеров',
-        x: 6, y: 4, w: 3, d: 3, height: 50, color: '#596a7d',
-        status: 'online', load: 88, cycle: '01:26:33', output: 83,
-        description: 'Высокоскоростные FDM-принтеры для прототипирования и серийного производства.',
-        sensors: ['Камеры', 'Лидар', 'Температура', 'Датчики филамента'],
-        protocols: ['MQTT', 'LAN API', 'Wi-Fi'],
-      },
-      {
         id: 'sls', name: 'SLS-печать', type: 'Порошковая 3D-печать',
-        x: 10, y: 4, w: 3, d: 3, height: 58, color: '#5e5960',
+        x: 1, y: 4, w: 3, d: 3, height: 58, color: '#5e5960',
         status: 'warning', load: 71, cycle: '08:42:00', output: 24,
         description: 'Селективное лазерное спекание полиамидных и композитных порошков.',
         sensors: ['Температура камеры', 'Камера слоя', 'Лазер', 'Кислород'],
         protocols: ['OPC UA', 'MQTT', 'EtherCAT'],
       },
       {
+        id: 'bambu', name: 'FDM Bambu Lab', type: 'Ферма FDM-принтеров',
+        x: 5, y: 4, w: 3, d: 3, height: 50, color: '#596a7d',
+        status: 'online', load: 88, cycle: '01:26:33', output: 83,
+        description: 'Высокоскоростные FDM-принтеры для прототипирования и серийного производства.',
+        sensors: ['Камеры', 'Лидар', 'Температура', 'Датчики филамента'],
+        protocols: ['MQTT', 'LAN API', 'Wi-Fi'],
+      },
+      {
+        id: 'cr30', name: 'FDM CR-30', type: 'Конвейерная 3D-печать',
+        x: 9, y: 4, w: 4, d: 3, height: 45, color: '#4c5c70',
+        status: 'online', load: 76, cycle: '02:48:12', output: 64,
+        description: 'Ферма конвейерных FDM-принтеров для непрерывного производства длинных деталей.',
+        sensors: ['Температура сопла', 'Температура стола', 'Филамент', 'Камера'],
+        protocols: ['OctoPrint API', 'MQTT', 'Wi-Fi'],
+      },
+      {
         id: 'powder', name: 'Обработка порошка', type: 'Просеивание и регенерация',
-        x: 2, y: 8, w: 3, d: 2, height: 34, color: '#4d6070',
+        x: 1, y: 8, w: 3, d: 2, height: 34, color: '#4d6070',
         status: 'online', load: 66, cycle: '18:30', output: 48,
         description: 'Распаковка SLS-камер, очистка, просеивание и повторное смешивание порошка.',
         sensors: ['Запыленность', 'Размер частиц', 'Вес', 'Влажность'],
@@ -191,7 +204,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'quality', name: 'Контроль качества', type: '3D-сканирование и рентген',
-        x: 6, y: 8, w: 3, d: 2, height: 32, color: '#46616d',
+        x: 5, y: 8, w: 3, d: 2, height: 32, color: '#46616d',
         status: 'online', load: 73, cycle: '02:42', output: 224,
         description: 'Геометрический и неразрушающий контроль пластиковых деталей.',
         sensors: ['3D-сканер', 'Рентген', 'Камеры', 'Спектрометр'],
@@ -199,7 +212,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'finish', name: 'Постобработка', type: 'Очистка и финишная обработка',
-        x: 10, y: 8, w: 3, d: 2, height: 38, color: '#516274',
+        x: 9, y: 8, w: 3, d: 2, height: 38, color: '#516274',
         status: 'online', load: 79, cycle: '04:15', output: 195,
         description: 'Удаление поддержек, шлифовка, окраска и химическое сглаживание.',
         sensors: ['Шероховатость', 'Камеры', 'Температура', 'Концентрация паров'],
@@ -207,7 +220,7 @@ export const TWIN_FACTORIES: Record<'metal' | 'plastic', TwinFactory> = {
       },
       {
         id: 'finished', name: 'Склад продукции', type: 'Упаковка и отгрузка',
-        x: 14, y: 8, w: 3, d: 2, height: 27, color: '#48586b',
+        x: 13, y: 8, w: 3, d: 2, height: 27, color: '#48586b',
         status: 'online', load: 63, cycle: '—', output: 182,
         description: 'Сборка, упаковка, адресное хранение и подготовка пластиковых деталей к отгрузке.',
         sensors: ['RFID', 'Весы', 'Камеры', 'Штрихкоды'],
