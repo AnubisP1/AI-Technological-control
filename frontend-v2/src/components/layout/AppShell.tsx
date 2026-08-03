@@ -8,16 +8,20 @@ import {
   Sparkles,
   Home,
   ClipboardCheck,
+  LayoutDashboard,
+  FileText,
 } from 'lucide-react'
 import { StatusPill } from '@/components/layout/StatusPill'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
+  { to: '/app/overview', label: 'Обзор', icon: LayoutDashboard },
   { to: '/app/analysis', label: 'Анализ детали', icon: ScanSearch },
   { to: '/app/nsi-expertise', label: 'Экспертиза НСИ', icon: ClipboardCheck },
   { to: '/app/production', label: 'Производство', icon: Factory },
   { to: '/app/quality', label: 'Контроль качества', icon: ShieldCheck },
   { to: '/app/digital-twin', label: 'Цифровой двойник', icon: Network },
+  { to: '/app/documents', label: 'Документы', icon: FileText },
 ] as const
 
 export function AppShell({ children }: { children: ReactNode }) {
