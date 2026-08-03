@@ -1,20 +1,19 @@
-import { PartViewer, type PartViewerProps } from '@/components/PartViewer'
+import { GearBackdrop } from '@/components/GearBackdrop'
 
 /**
- * Декоративный 3D-фон рабочих экранов приложения (Фаза 17, часть 2) —
- * та же параметрическая визуализация STEP, что и в Hero.tsx на главной
- * странице, но приглушённая и закреплённая в углу экрана, поскольку
- * рабочие экраны — светлая тема с плотным UI поверх (в отличие от
- * тёмного полноэкранного Hero). Каждый экран получает свою реальную
- * деталь из КД для тестов/, а не повторяет одну и ту же модель.
+ * Декоративный 3D-фон рабочих экранов приложения (Фаза 17, часть 2,
+ * обновлено в части 5) — по прямому запросу пользователя показывает
+ * узнаваемую шестерню (UI UX reference/gear.glb, готовая авторская
+ * модель), а не абстрактную геометрию — приглушённая и закреплённая в
+ * углу экрана, поскольку рабочие экраны — светлая тема с плотным UI
+ * поверх (в отличие от тёмного полноэкранного Hero).
  *
  * compact — уменьшенный вариант для экранов с широким табличным
  * контентом до самого правого края (напр. реестр НСИ): полноразмерный
  * фон визуально задевал последнюю графу таблицы (найдено при проверке
  * через Playwright) — на таких экранах фон меньше и чуть прозрачнее.
  */
-export function PageBackdrop(props: PartViewerProps & { compact?: boolean }) {
-  const { compact = false, ...viewerProps } = props
+export function PageBackdrop({ compact = false }: { compact?: boolean }) {
   return (
     <div
       className={
@@ -24,7 +23,7 @@ export function PageBackdrop(props: PartViewerProps & { compact?: boolean }) {
       }
       aria-hidden="true"
     >
-      <PartViewer {...viewerProps} autoRotate hideOverlay interactive={false} transparentBackground />
+      <GearBackdrop transparentBackground />
     </div>
   )
 }

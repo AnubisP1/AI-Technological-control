@@ -1,27 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate, Link } from 'react-router'
 import { motion } from 'framer-motion'
-import { CheckCircle2, XCircle, PlayCircle, ArrowRight, ClipboardCheck } from 'lucide-react'
+import { PlayCircle, ArrowRight, ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
 import { MachineIcon } from '@/components/production/MachineIcon'
 import { PageBackdrop } from '@/components/PageBackdrop'
 import { useSimulationClock, operationBoundaries, TOTAL_MS } from '@/lib/useSimulationClock'
 import { useWorkflow } from '@/lib/workflow'
-import {
-  decideApproval,
-  simulateMetalManufacturing,
-  simulatePrintManufacturing,
-  type ApprovalResult,
-  type SimulationPlan,
-} from '@/lib/api'
-
-// Реальные габариты пропеллера БПЛА из тестового fixture (КД для
-// тестов/Пластиковые детали/Архив/HQProp T5x3.STEP), полученные через
-// RegexStepParser — тонкая деталь хорошо иллюстрирует тему
-// производства/изготовления на этом экране.
-const BACKGROUND_PART = { partName: 'HQProp T5x3', lengthXMm: 127.0, lengthYMm: 3.0, lengthZMm: 14.0 }
+import { simulateMetalManufacturing, simulatePrintManufacturing, type SimulationPlan } from '@/lib/api'
 
 function ProgramOutput({ lines, revealCount }: { lines: string[]; revealCount: number }) {
   if (lines.length === 0) {
@@ -39,11 +27,9 @@ function ProgramOutput({ lines, revealCount }: { lines: string[]; revealCount: n
 
 export function ProductionPage() {
   const navigate = useNavigate()
-  const { pendingInput, nsiExpertiseAcknowledged } = useWorkflow()
+  const { pendingInput, nsiExpertiseAcknowledged, approvalApproved } = useWorkflow()
   const readyForApproval = Boolean(pendingInput) && nsiExpertiseAcknowledged
 
-  const [approval, setApproval] = useState<ApprovalResult | null>(null)
-  const [rejectComment, setRejectComment] = useState('')
   const [plan, setPlan] = useState<SimulationPlan | null>(null)
   const [simulationStarted, setSimulationStarted] = useState(false)
   const [simulationDone, setSimulationDone] = useState(false)
@@ -63,10 +49,12 @@ export function ProductionPage() {
       ? 0
       : currentOperationIndex
 
-  const approveMutation = useMutation({
+  // Решение о согласовании принимается в ApprovalDialog на экране
+  // "Экспертиза НСИ" (Фаза 17, часть 5) — сюда попадают уже с
+  // approvalApproved=true, поэтому план симуляции строится сразу,
+  // без повторного запроса решения на этой странице.
+  const planMutation = useMutation({
     mutationFn: async () => {
-      const result = await decideApproval({ decision: 'approved' })
-      setApproval(result)
       if (!pendingInput) throw new Error('Нет входных данных — сначала пройдите «Анализ детали».')
       const simulationResult =
         pendingInput.kind === 'metal'
@@ -80,13 +68,12 @@ export function ProductionPage() {
     },
   })
 
-  const rejectMutation = useMutation({
-    mutationFn: async () => {
-      if (!rejectComment.trim()) throw new Error('Укажите комментарий — что нужно исправить.')
-      const result = await decideApproval({ decision: 'rejected', comment: rejectComment })
-      setApproval(result)
-    },
-  })
+  useEffect(() => {
+    if (readyForApproval && approvalApproved && !plan && !planMutation.isPending) {
+      planMutation.mutate()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readyForApproval, approvalApproved])
 
   function startSimulation() {
     setSimulationStarted(true)
@@ -96,7 +83,7 @@ export function ProductionPage() {
   if (!readyForApproval) {
     return (
       <Container className="max-w-2xl py-10">
-        <PageBackdrop {...BACKGROUND_PART} />
+        <PageBackdrop />
         <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">Производство</h1>
         <p className="mb-8 text-sm text-ink-dim">
           Согласование комплекта технологической документации главным технологом.
@@ -138,48 +125,27 @@ export function ProductionPage() {
     )
   }
 
-  if (!approval?.can_start_simulation) {
+  if (!approvalApproved || !plan) {
     return (
       <Container className="max-w-2xl py-10">
-        <PageBackdrop {...BACKGROUND_PART} />
+        <PageBackdrop />
         <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">Производство</h1>
         <p className="mb-8 text-sm text-ink-dim">
           Согласование комплекта технологической документации главным технологом.
         </p>
 
         <div className="rounded-2xl border border-border bg-surface p-6">
-          <div className="flex gap-3">
-            <Button disabled={approveMutation.isPending} onClick={() => approveMutation.mutate()}>
-              <CheckCircle2 className="h-4 w-4" />
-              Согласовать
-            </Button>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <input
-              type="text"
-              placeholder="Комментарий для повторной генерации"
-              value={rejectComment}
-              onChange={(e) => setRejectComment(e.target.value)}
-              className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
-            />
-            <Button
-              variant="secondary"
-              disabled={rejectMutation.isPending}
-              onClick={() => rejectMutation.mutate()}
-            >
-              <XCircle className="h-4 w-4" />
-              Отклонить
-            </Button>
-          </div>
-
-          {(approveMutation.isError || rejectMutation.isError) && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-              {((approveMutation.error ?? rejectMutation.error) as Error).message}
+          {!approvalApproved && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Комплект ещё не согласован — вернитесь на экран «Экспертиза НСИ» и согласуйте его там.
             </div>
           )}
-          {approval?.decision === 'rejected' && (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Комплект отклонён: «{approval.comment}». Вернитесь в «Анализ детали» для повторной генерации.
+          {approvalApproved && planMutation.isPending && (
+            <p className="text-sm text-ink-dim">Построение плана симуляции…</p>
+          )}
+          {approvalApproved && planMutation.isError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {(planMutation.error as Error).message}
             </div>
           )}
         </div>
@@ -189,7 +155,7 @@ export function ProductionPage() {
 
   return (
     <Container className="max-w-3xl py-10">
-      <PageBackdrop {...BACKGROUND_PART} />
+      <PageBackdrop />
       <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">
         Комплект ТД согласован
       </h1>

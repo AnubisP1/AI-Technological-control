@@ -24,6 +24,16 @@ _LABEL_ROW_TOLERANCE_PX = 6
 _RE_TECH_REQUIREMENT = re.compile(r"^\s*(\d+)\.\s*(.+?)\.?\s*$")
 _RE_MATERIAL_LINE = re.compile(r"^[A-ЯЁ0-9ХГТ]+\s+ГОСТ\s+[\d.\-]+$")
 _RE_BLANK_LINE = re.compile(r"^(Круг|Лист|Пруток|Полоса|Труба)\s+", re.IGNORECASE)
+# Обозначение группы поковки по ГОСТ 8479-70 ("2. Гр. III ГОСТ 8479-70") —
+# встречается не в штампе (заготовка там указывается только для проката
+# стандартного профиля, см. _RE_BLANK_LINE), а в технических требованиях
+# чертежа как пронумерованный пункт, как в реальном тестовом чертеже
+# "Шестерня от конической передачи..." (КД для тестов/Детали из
+# металла/2. Тестовая деталь металл/) — заготовка-поковка не даёт
+# диаметра/типового профиля, поэтому здесь используется как отдельный
+# источник blank_designation. Необязательный префикс "N. " — номер
+# пункта технических требований, не часть самого обозначения.
+_RE_FORGING_GROUP_LINE = re.compile(r"^(?:\d+\.\s*)?(Гр\.?\s*[IVX]+\s+ГОСТ\s+[\d.\-]+)", re.IGNORECASE)
 _RE_DATE = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
 
 KNOWN_LABELS = {
@@ -44,7 +54,9 @@ def extract_title_block(lines: list[Line], page_width: float, page_height: float
     designation = _designation(stamp_lines)
     part_name = _part_name(stamp_lines, designation)
     material = _material(stamp_lines)
-    blank_designation = _first_matching(stamp_lines, _RE_BLANK_LINE)
+    blank_designation = _first_matching(stamp_lines, _RE_BLANK_LINE) or _first_matching_group(
+        lines, _RE_FORGING_GROUP_LINE
+    )
 
     return TitleBlockFields(
         designation=designation,
@@ -172,4 +184,16 @@ def _first_matching(lines: list[Line], pattern: re.Pattern) -> str | None:
     for ln in lines:
         if pattern.match(ln[4]):
             return ln[4]
+    return None
+
+
+def _first_matching_group(lines: list[Line], pattern: re.Pattern) -> str | None:
+    """Как _first_matching, но возвращает первую захватывающую группу,
+    а не всю строку — для паттернов с посторонним префиксом (напр.
+    номер пункта технических требований "2. Гр. III ГОСТ 8479-70",
+    где "2. " не часть искомого обозначения)."""
+    for ln in lines:
+        match = pattern.match(ln[4])
+        if match:
+            return match.group(1)
     return None

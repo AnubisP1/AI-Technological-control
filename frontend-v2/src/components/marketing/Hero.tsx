@@ -2,25 +2,15 @@ import { motion } from 'framer-motion'
 import { Link } from 'react-router'
 import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { PartViewer } from '@/components/PartViewer'
+import { GearBackdrop } from '@/components/GearBackdrop'
 import { StatusPill } from '@/components/layout/StatusPill'
 import { Container } from '@/components/marketing/Section'
-
-// Реальные габариты сборки БПЛА из тестового fixture (КД для тестов/
-// Пластиковые детали/Архив/Сборка рабочая.STEP), полученные через
-// RegexStepParser — не выдуманные размеры.
-const BACKGROUND_ASSEMBLY = {
-  partName: 'Сборка рабочая (БПЛА)',
-  lengthXMm: 2327.308,
-  lengthYMm: 1056.436,
-  lengthZMm: 2327.308,
-}
 
 export function Hero() {
   return (
     <section className="relative min-h-[560px] overflow-hidden bg-dark text-white">
       <div className="pointer-events-none absolute inset-0">
-        <PartViewer {...BACKGROUND_ASSEMBLY} autoRotate hideOverlay interactive={false} />
+        <GearBackdrop />
       </div>
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-to-r from-dark via-dark/85 to-dark/40"

@@ -2,23 +2,13 @@ import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, FileText, Search, ArrowRight } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, FileText, Search, ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
 import { PageBackdrop } from '@/components/PageBackdrop'
+import { ApprovalDialog } from '@/components/production/ApprovalDialog'
 import { useWorkflow } from '@/lib/workflow'
 import { reviewKd, generateRouteCard, type KdReviewReport, type RouteCard, type MatchStatus } from '@/lib/api'
-
-// Реальные габариты шестерни редуктора из тестового fixture (КД для
-// тестов/Детали из металла/2. Тестовая деталь металл/Шестерня...stp),
-// полученные через RegexStepParser — металлическая деталь с явной
-// технической документацией уместна на экране сверки с НСИ.
-const BACKGROUND_PART = {
-  partName: 'Шестерня редуктора',
-  lengthXMm: 250.954,
-  lengthYMm: 186.516,
-  lengthZMm: 185.994,
-}
 
 /**
  * Экран "Экспертиза соответствия НСИ" (Фаза 17, часть 2) — по образцу
@@ -124,12 +114,19 @@ function StatCard({ label, count, total, className }: { label: string; count: nu
 
 export function NsiExpertisePage() {
   const navigate = useNavigate()
-  const { pendingInput, acknowledgeNsiExpertise } = useWorkflow()
+  const { pendingInput, acknowledgeNsiExpertise, markApproved } = useWorkflow()
   const [review, setReview] = useState<KdReviewReport | null>(null)
   const [routeCard, setRouteCard] = useState<RouteCard | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<RegistryStatus | 'all'>('all')
   const [registryFilter, setRegistryFilter] = useState<string | 'all'>('all')
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
+
+  function handleApproved() {
+    acknowledgeNsiExpertise()
+    markApproved()
+    navigate('/app/production')
+  }
 
   const drawing = pendingInput?.kind === 'metal' ? pendingInput.drawing : null
 
@@ -170,7 +167,7 @@ export function NsiExpertisePage() {
 
   return (
     <Container className="max-w-6xl py-10">
-      <PageBackdrop {...BACKGROUND_PART} compact />
+      <PageBackdrop compact />
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Экспертиза соответствия НСИ</h1>
@@ -204,9 +201,9 @@ export function NsiExpertisePage() {
           применяется. Материал для печати уже подобран автоподбором на экране «Анализ детали». Можно
           сразу переходить к согласованию.
           <div className="mt-3">
-            <Button size="sm" onClick={() => { acknowledgeNsiExpertise(); navigate('/app/production') }}>
+            <Button size="sm" onClick={() => setApprovalDialogOpen(true)}>
+              <ClipboardCheck className="h-3.5 w-3.5" />
               Перейти к согласованию
-              <ArrowRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
@@ -314,15 +311,17 @@ export function NsiExpertisePage() {
             )}
             <p className="mb-3 text-sm text-ink-dim">
               Экспертиза проведена. Главный технолог может согласовать комплект технологической
-              документации на экране «Производство».
+              документации прямо здесь.
             </p>
-            <Button onClick={() => { acknowledgeNsiExpertise(); navigate('/app/production') }}>
+            <Button onClick={() => setApprovalDialogOpen(true)}>
+              <ClipboardCheck className="h-4 w-4" />
               Перейти к согласованию
-              <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </motion.div>
       )}
+
+      <ApprovalDialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen} onApproved={handleApproved} />
     </Container>
   )
 }

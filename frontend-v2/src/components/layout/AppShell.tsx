@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   LayoutDashboard,
   FileText,
+  Database,
 } from 'lucide-react'
 import { StatusPill } from '@/components/layout/StatusPill'
 import { cn } from '@/lib/utils'
@@ -22,12 +23,13 @@ const NAV_ITEMS = [
   { to: '/app/quality', label: 'Контроль качества', icon: ShieldCheck },
   { to: '/app/digital-twin', label: 'Цифровой двойник', icon: Network },
   { to: '/app/documents', label: 'Документы', icon: FileText },
+  { to: '/app/nsi-browser', label: 'База НСИ', icon: Database },
 ] as const
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-svh bg-bg text-ink flex">
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-border bg-dark text-white/90">
+    <div className="h-svh overflow-hidden bg-bg text-ink flex">
+      <aside className="hidden md:flex w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-dark text-white/90">
         <NavLink
           to="/"
           className="flex items-center gap-2 px-5 py-5 text-sm font-semibold tracking-tight"
@@ -70,19 +72,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="px-5 py-4 text-[11px] font-mono uppercase tracking-widest text-white/25">
-          БПЛА · офлайн-контур
+        <div className="border-t border-white/10 px-5 py-4">
+          <StatusPill dark />
+          <div className="mt-2 text-[11px] font-mono uppercase tracking-widest text-white/25">
+            БПЛА · офлайн-контур
+          </div>
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-5">
-          <div className="md:hidden font-semibold tracking-tight">AI-Технолог</div>
-          <div className="hidden md:block" />
-          <StatusPill />
-        </header>
-        <main className="flex-1 overflow-y-auto">{children}</main>
-      </div>
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
     </div>
   )
 }
