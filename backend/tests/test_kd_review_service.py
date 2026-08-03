@@ -36,11 +36,28 @@ def test_match_material_exact_match_by_normalized_grade_and_gost():
 
 
 def test_match_material_partial_match_when_grade_unknown_but_gost_known():
-    """Реальный случай из fixture 2: марка 12ХН3А не в demo-НСИ, но ГОСТ
-    термообработки 4543-2016 совпадает с записью для 40Х."""
+    """Изолированный случай доменной функции: если бы в справочнике была
+    только 40Х (без самой 12ХН3А — в demo-НСИ она добавлена отдельной
+    записью, см. seed_data.sql), совпадение по одному ГОСТу термообработки
+    должно быть частичным, не полным."""
     materials = (MaterialRecord(grade="40Х", gost_standard="ГОСТ 4543-2016"),)
     result = match_material("Сталь 12ХН3А ГОСТ 4543-2016", materials)
     assert result.status == MatchStatus.PARTIAL_MATCH
+
+
+def test_match_material_finds_exact_match_even_when_partial_candidate_comes_first():
+    """Регрессия: раньше match_material останавливалась на первом
+    попавшемся частичном совпадении по порядку перебора и не проверяла
+    остальные записи — если два материала в справочнике имели общий ГОСТ
+    (как 40Х и 12ХН3А, оба ГОСТ 4543-2016), запись, идущая раньше,
+    маскировала точное совпадение, идущее дальше по списку."""
+    materials = (
+        MaterialRecord(grade="40Х", gost_standard="ГОСТ 4543-2016"),
+        MaterialRecord(grade="12ХН3А", gost_standard="ГОСТ 4543-2016"),
+    )
+    result = match_material("Сталь 12ХН3А ГОСТ 4543-2016", materials)
+    assert result.status == MatchStatus.MATCHED
+    assert result.matched_grade == "12ХН3А"
 
 
 def test_match_material_not_found_when_nothing_matches():
@@ -126,7 +143,13 @@ def test_review_service_on_val_drawing_finds_material_and_partial_blank_match(tm
     assert not report.has_blocking_findings
 
 
-def test_review_service_on_gear_drawing_flags_partial_material_match(tmp_path: Path):
+def test_review_service_on_gear_drawing_finds_material_and_partial_blank_match(tmp_path: Path):
+    """12ХН3А (ГОСТ 4543-2016) заведена в demo-НСИ явным материалом
+    (см. seed_data.sql) — реальный материал реального тестового чертежа,
+    не выдумка ради теста. Заготовка — поковка (обозначение группы
+    контроля 'Гр. III ГОСТ 8479-70', не типовой профиль проката) —
+    диаметра нет ни на чертеже, ни в справочнике, поэтому частичное
+    совпадение (ГОСТ найден, типоразмер — нет), а не полное."""
     from app.infrastructure.db.nsi_db import NsiDatabase, build_database
 
     db_path = tmp_path / "metal.sqlite"
@@ -136,9 +159,8 @@ def test_review_service_on_gear_drawing_flags_partial_material_match(tmp_path: P
     service = KdReviewService(nsi_lookup=SqliteNsiLookup(db_path))
     report = service.review(drawing)
 
-    assert report.material_check.status == MatchStatus.PARTIAL_MATCH
-    warning_findings = [f for f in report.findings if f.severity == "warning"]
-    assert len(warning_findings) > 0
+    assert report.material_check.status == MatchStatus.MATCHED
+    assert report.blank_check.status == MatchStatus.PARTIAL_MATCH
 
 
 def test_review_service_without_drawing_returns_blocking_finding():

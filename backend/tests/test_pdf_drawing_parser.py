@@ -60,7 +60,10 @@ def test_val_drawing_requirements_exclude_dates_and_dimensions():
 def test_gear_drawing_handles_multiline_part_name_and_split_material():
     """Регрессия: наименование детали на этом чертеже перенесено на 3
     строки, а материал разбит на 'Сталь МАРКА' + 'ГОСТ N' отдельными
-    строками — оба случая отличаются от layout первого fixture."""
+    строками — оба случая отличаются от layout первого fixture. Заготовка
+    этой детали — поковка (обозначение группы контроля 'Гр. III ГОСТ
+    8479-70' в технических требованиях, не типовой профиль проката
+    в штампе, см. stamp_extraction.py::_RE_FORGING_GROUP_LINE)."""
     parser = PdfDrawingParser()
     model = parser.parse(_require(GEAR_PDF))
 
@@ -68,6 +71,7 @@ def test_gear_drawing_handles_multiline_part_name_and_split_material():
     assert tb.designation == "KPP-5002-11.10.2024"
     assert tb.part_name == "Шестерня от конической передачи с круговым зубом редуктора"
     assert tb.material == "Сталь 12ХН3А ГОСТ 4543-2016"
+    assert tb.blank_designation == "Гр. III ГОСТ 8479-70"
     assert tb.scale == "1:2"
     assert tb.sheet_format == "A2"
 

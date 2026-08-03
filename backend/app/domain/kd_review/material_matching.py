@@ -33,6 +33,14 @@ def match_material(
     grade_part = _normalize_grade(_extract_grade_part(material_from_drawing))
     gost_number = _extract_gost_number(material_from_drawing)
 
+    # Полное совпадение (марка И ГОСТ) ищется по ВСЕЙ базе первым
+    # приоритетом, не по первой попавшейся записи в порядке перебора —
+    # реальный баг: если два материала в справочнике имеют один и тот же
+    # ГОСТ (напр. 40Х и 12ХН3А оба по ГОСТ 4543-2016), запись, идущая
+    # раньше по id, давала бы частичное совпадение и останавливала бы
+    # поиск ещё до того, как дальше по списку нашлось бы точное
+    # совпадение по марке.
+    partial_match: MaterialRecord | None = None
     for record in known_materials:
         record_grade = _normalize_grade(record.grade)
         record_gost = _extract_gost_number(record.gost_standard or "")
@@ -47,19 +55,22 @@ def match_material(
                 matched_gost=record.gost_standard,
                 note="Материал найден в справочнике НСИ.",
             )
-        if grade_matches or gost_matches:
-            return MaterialCheck(
-                material_from_drawing=material_from_drawing,
-                status=MatchStatus.PARTIAL_MATCH,
-                matched_grade=record.grade,
-                matched_gost=record.gost_standard,
-                note=(
-                    "Частичное совпадение с записью НСИ "
-                    f"({record.grade}, {record.gost_standard}) — "
-                    "марка и ГОСТ распознаны из разных записей справочника, "
-                    "требуется проверка технологом."
-                ),
-            )
+        if (grade_matches or gost_matches) and partial_match is None:
+            partial_match = record
+
+    if partial_match is not None:
+        return MaterialCheck(
+            material_from_drawing=material_from_drawing,
+            status=MatchStatus.PARTIAL_MATCH,
+            matched_grade=partial_match.grade,
+            matched_gost=partial_match.gost_standard,
+            note=(
+                "Частичное совпадение с записью НСИ "
+                f"({partial_match.grade}, {partial_match.gost_standard}) — "
+                "марка и ГОСТ распознаны из разных записей справочника, "
+                "требуется проверка технологом."
+            ),
+        )
 
     return MaterialCheck(
         material_from_drawing=material_from_drawing,
