@@ -203,6 +203,7 @@ export function AnalysisPage() {
                 lengthXMm={boundingBox.length_x}
                 lengthYMm={boundingBox.length_y}
                 lengthZMm={boundingBox.length_z}
+                stepFile={stepModel}
               />
             </div>
           )}

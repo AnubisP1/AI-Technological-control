@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from app.domain.cad.kd_analysis import KdAnalysisResult
 from app.domain.kd_review.review_model import KdReviewReport
@@ -19,21 +20,25 @@ from app.domain.quality_control.serial_production_model import QualityReport
 from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
 from app.infrastructure.cad.auto_view_detector import AutoViewDetector
 from app.infrastructure.cad.regex_step_parser import RegexStepParser
+from app.infrastructure.cad.step_mesh_exporter import export_step_to_stl
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.nsi_db import NsiDatabase, build_database, connect
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
 from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanningLookup
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
+from app.infrastructure.llm.yandex_gpt_chat_responder import YandexGptChatResponder
 from app.infrastructure.llm.yandex_gpt_text_generator import YandexGptTextGenerator
 from app.infrastructure.quality_control.opencv_photo_comparator import OpenCvPhotoComparator
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.infrastructure.worker_pool import run_heavy
 from app.services.approval_service import ApprovalRejectionRequiresCommentError, ApprovalService
+from app.services.assistant_service import AssistantService
 from app.services.kd_analysis_service import KdAnalysisService
 from app.services.kd_review_pdf_export import generate_kd_review_pdf
 from app.services.kd_review_service import KdReviewService
 from app.services.manufacturing_simulation_service import ManufacturingSimulationService
 from app.services.material_recommendation_service import MaterialRecommendationService
+from app.services.nsi_browser_service import NsiBrowserService
 from app.services.operation_card_generator import OperationCardGenerator
 from app.services.operation_card_pdf_export import generate_operation_card_pdf
 from app.services.print_card_generator import PrintCardGenerator
@@ -86,6 +91,60 @@ def health() -> dict:
         "cpu_thread_budget": limits.thread_count,
         "cpu_count_total": limits.cpu_count_total,
     }
+
+
+def _get_nsi_browser_service() -> NsiBrowserService:
+    return NsiBrowserService(_get_metal_db_path(), _get_additive_db_path())
+
+
+@router.get("/nsi/{database}/tables")
+async def list_nsi_tables(database: str) -> list[dict]:
+    """Просмотрщик БД НСИ целиком (Фаза 17, часть 5) — список таблиц с
+    числом строк, без привязки к загруженной детали (в отличие от
+    /kd/review, сверяющего конкретную деталь). database: 'metal' | 'additive'."""
+    try:
+        db = NsiDatabase(database)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Неизвестная база '{database}' — ожидается metal/additive")
+    tables = _get_nsi_browser_service().list_tables(db)
+    return [{"name": t.name, "row_count": t.row_count} for t in tables]
+
+
+@router.get("/nsi/{database}/tables/{table_name}")
+async def get_nsi_table_content(database: str, table_name: str) -> dict:
+    try:
+        db = NsiDatabase(database)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Неизвестная база '{database}' — ожидается metal/additive")
+    content = _get_nsi_browser_service().table_content(db, table_name)
+    if content is None:
+        raise HTTPException(status_code=404, detail=f"Таблица '{table_name}' не найдена в базе '{database}'")
+    return {
+        "name": content.name,
+        "columns": list(content.columns),
+        "rows": [list(row) for row in content.rows],
+        "total_row_count": content.total_row_count,
+        "truncated": content.truncated,
+    }
+
+
+class ChatQuestion(BaseModel):
+    question: str
+
+
+def _get_assistant_service() -> AssistantService:
+    return AssistantService(
+        _get_metal_db_path(), _get_additive_db_path(), chat_responder=_build_chat_responder()
+    )
+
+
+@router.post("/assistant/chat")
+async def ask_assistant(body: ChatQuestion) -> dict:
+    """AI-ассистент по вопросам НСИ/технологичности (Фаза 17, часть 5,
+    экран "Обзор") — keyword-поиск по справочникам НСИ + LLM/шаблонный
+    fallback (см. AssistantService)."""
+    reply = _get_assistant_service().ask(body.question)
+    return {"text": reply.text, "generated_by": reply.generated_by}
 
 
 def _result_to_dict(result: KdAnalysisResult) -> dict:
@@ -197,6 +256,19 @@ def _review_to_dict(report: KdReviewReport) -> dict:
     }
 
 
+def _build_chat_responder():
+    """Возвращает YandexGptChatResponder, если в .env заданы ключи (тот
+    же осознанный сетевой путь, что _build_text_generator), иначе None —
+    тогда AssistantService отвечает целиком офлайн шаблонным перечислением
+    найденных в НСИ фактов."""
+    settings = get_settings()
+    if not settings.yandex_gpt_api_key or not settings.yandex_gpt_folder_id:
+        return None
+    return YandexGptChatResponder(
+        api_key=settings.yandex_gpt_api_key, folder_id=settings.yandex_gpt_folder_id
+    )
+
+
 def _build_text_generator():
     """Возвращает YandexGptTextGenerator, если в .env заданы ключи
     (осознанное исключение из офлайн-требования, см. QUESTIONS.md №12),
@@ -236,6 +308,36 @@ async def analyze_kd(
             drawing_path=drawing_path, step_path=step_path
         )
         return _result_to_dict(result)
+
+
+@router.post("/kd/step-mesh")
+async def export_step_mesh(step_model: UploadFile) -> Response:
+    """Реальная тесселяция STEP -> STL (Фаза 17, часть 5) — по прямому
+    запросу пользователя заменяет параметрический прокси-бокс PartViewer
+    настоящей геометрией детали, где это технически доступно.
+
+    Требует внешнего conda-окружения с pythonocc-core (см.
+    step_mesh_exporter.py, Settings.pythonocc_python_path) — если оно не
+    настроено или экспорт не удался, отвечает 404 (не 500 — отсутствие
+    точной геометрии не ошибка сервера, а ожидаемый fallback-путь),
+    фронтенд в этом случае продолжает показывать прокси-бокс.
+    """
+    settings = get_settings()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        step_path = Path(tmp_dir) / (step_model.filename or "model.step")
+        step_path.write_bytes(await step_model.read())
+
+        stl_bytes = await run_heavy(
+            export_step_to_stl, step_path, settings.pythonocc_python_path
+        )
+
+    if stl_bytes is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Реальная тесселяция недоступна (pythonocc-core не настроен или экспорт не удался)",
+        )
+
+    return Response(content=stl_bytes, media_type="model/stl")
 
 
 @router.post("/kd/review")
