@@ -187,6 +187,46 @@ export async function generatePrintRouteCard(params: {
   return parseJsonOrThrow(response)
 }
 
+async function _downloadPdfOrThrow(response: Response): Promise<Blob> {
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.detail ?? response.statusText)
+  }
+  return response.blob()
+}
+
+export async function downloadRouteCardPdf(params: { drawing: File }): Promise<Blob> {
+  const form = new FormData()
+  form.append('drawing', params.drawing)
+  const response = await fetch(`${API_BASE}/kd/route-card/pdf`, { method: 'POST', body: form })
+  return _downloadPdfOrThrow(response)
+}
+
+export async function downloadOperationCardPdf(params: { drawing: File }): Promise<Blob> {
+  const form = new FormData()
+  form.append('drawing', params.drawing)
+  const response = await fetch(`${API_BASE}/kd/operation-card/pdf`, { method: 'POST', body: form })
+  return _downloadPdfOrThrow(response)
+}
+
+export async function downloadPrintRouteCardPdf(params: {
+  stepModel: File
+  amTechnologyCode: string
+  materialGroupCode: string
+}): Promise<Blob> {
+  const form = new FormData()
+  form.append('step_model', params.stepModel)
+  const query = new URLSearchParams({
+    am_technology_code: params.amTechnologyCode,
+    material_group_code: params.materialGroupCode,
+  })
+  const response = await fetch(`${API_BASE}/print/route-card/pdf?${query}`, {
+    method: 'POST',
+    body: form,
+  })
+  return _downloadPdfOrThrow(response)
+}
+
 // ---------- Фаза 10: автоподбор материала для пластика ----------
 
 export interface PartApplicationClass {

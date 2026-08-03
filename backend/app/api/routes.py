@@ -34,11 +34,15 @@ from app.services.kd_review_pdf_export import generate_kd_review_pdf
 from app.services.kd_review_service import KdReviewService
 from app.services.manufacturing_simulation_service import ManufacturingSimulationService
 from app.services.material_recommendation_service import MaterialRecommendationService
+from app.services.operation_card_generator import OperationCardGenerator
+from app.services.operation_card_pdf_export import generate_operation_card_pdf
 from app.services.print_card_generator import PrintCardGenerator
+from app.services.print_card_pdf_export import generate_print_card_pdf
 from app.services.print_process_planning_service import PrintProcessPlanningService
 from app.services.process_planning_service import ProcessPlanningService
 from app.services.quality_control_service import QualityControlService
 from app.services.route_card_generator import RouteCardGenerator, parse_layout_columns
+from app.services.route_card_pdf_export import generate_route_card_pdf
 
 router = APIRouter()
 _approval_service = ApprovalService()
@@ -312,6 +316,7 @@ async def generate_route_card(drawing: UploadFile) -> dict:
     planning_result = planning_service.plan(
         part_name=drawing_model.title_block.part_name if drawing_model else None,
         material_grade=drawing_model.title_block.material if drawing_model else None,
+        blank_designation=drawing_model.title_block.blank_designation if drawing_model else None,
     )
 
     connection = connect(metal_db_path)
@@ -329,6 +334,88 @@ async def generate_route_card(drawing: UploadFile) -> dict:
         planning_result, columns=columns, gost_form=gost_form
     )
     return _route_card_to_dict(route_card, planning_result.warnings)
+
+
+@router.post("/kd/route-card/pdf")
+async def generate_route_card_pdf_endpoint(drawing: UploadFile) -> Response:
+    """Экспорт маршрутной карты (см. /kd/route-card) в PDF по форме
+    ГОСТ 3.1118-82 — реальная табличная сетка (Фаза 17), не текстовый
+    список."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+
+    metal_db_path = _get_metal_db_path()
+    planning_service = ProcessPlanningService(SqliteProcessPlanningLookup(metal_db_path))
+    planning_result = planning_service.plan(
+        part_name=drawing_model.title_block.part_name if drawing_model else None,
+        material_grade=drawing_model.title_block.material if drawing_model else None,
+        blank_designation=drawing_model.title_block.blank_designation if drawing_model else None,
+    )
+
+    connection = connect(metal_db_path)
+    try:
+        template_row = connection.execute(
+            "SELECT gost_form, layout_schema FROM document_template WHERE code = 'MK'"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    columns = parse_layout_columns(template_row["layout_schema"]) if template_row else ()
+    gost_form = template_row["gost_form"] if template_row else None
+
+    route_card = RouteCardGenerator().generate(planning_result, columns=columns, gost_form=gost_form)
+    pdf_bytes = await run_heavy(generate_route_card_pdf, route_card)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="route_card.pdf"'},
+    )
+
+
+@router.post("/kd/operation-card/pdf")
+async def generate_operation_card_pdf_endpoint(drawing: UploadFile) -> Response:
+    """Экспорт операционной карты по форме ГОСТ 3.1404-86 — с
+    рассчитанными режимами резания t/S/V/n (Фаза 17, CuttingModeCalculator),
+    где расчёт был возможен (см. app/services/cutting_mode_calculator.py)."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+
+    metal_db_path = _get_metal_db_path()
+    planning_service = ProcessPlanningService(SqliteProcessPlanningLookup(metal_db_path))
+    planning_result = planning_service.plan(
+        part_name=drawing_model.title_block.part_name if drawing_model else None,
+        material_grade=drawing_model.title_block.material if drawing_model else None,
+        blank_designation=drawing_model.title_block.blank_designation if drawing_model else None,
+    )
+
+    connection = connect(metal_db_path)
+    try:
+        template_row = connection.execute(
+            "SELECT gost_form, layout_schema FROM document_template WHERE code = 'OK'"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    columns = parse_layout_columns(template_row["layout_schema"]) if template_row else ()
+    gost_form = template_row["gost_form"] if template_row else None
+
+    operation_card = OperationCardGenerator().generate(
+        planning_result, columns=columns, gost_form=gost_form
+    )
+    pdf_bytes = await run_heavy(generate_operation_card_pdf, operation_card)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="operation_card.pdf"'},
+    )
 
 
 def _print_process_card_to_dict(card: PrintProcessCard) -> dict:
@@ -350,6 +437,7 @@ def _print_process_card_to_dict(card: PrintProcessCard) -> dict:
             if qs
             else None
         ),
+        "print_estimate_note": card.print_estimate_note,
     }
 
 
@@ -482,6 +570,7 @@ async def generate_print_route_card(
         part_name=step.product_name or None,
         am_technology_code=am_technology_code,
         material_group_code=material_group_code,
+        bounding_box=step.bounding_box,
     )
 
     connection = connect(additive_db_path)
@@ -511,6 +600,61 @@ async def generate_print_route_card(
         "postprocessing_card": _postprocessing_card_to_dict(postprocessing_card),
         "warnings": list(planning_result.warnings),
     }
+
+
+@router.post("/print/route-card/pdf")
+async def generate_print_route_card_pdf_endpoint(
+    step_model: UploadFile,
+    am_technology_code: str,
+    material_group_code: str,
+) -> Response:
+    """Экспорт карты техпроцесса печати + карты постобработки (см.
+    /print/route-card) в PDF — свободная табличная форма (аддитивное
+    производство не имеет отраслевого ГОСТ-бланка), с рассчитанными
+    высотой слоя/временем печати/расходом материала (Фаза 17,
+    PrintParameterCalculator), где расчёт был возможен."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        step_path = Path(tmp_dir) / (step_model.filename or "model.step")
+        step_path.write_bytes(await step_model.read())
+
+        step = await run_heavy(RegexStepParser().parse, step_path)
+
+    additive_db_path = _get_additive_db_path()
+    planning_service = PrintProcessPlanningService(SqlitePrintPlanningLookup(additive_db_path))
+    planning_result = planning_service.plan(
+        part_name=step.product_name or None,
+        am_technology_code=am_technology_code,
+        material_group_code=material_group_code,
+        bounding_box=step.bounding_box,
+    )
+
+    connection = connect(additive_db_path)
+    try:
+        process_template = connection.execute(
+            "SELECT layout_schema FROM am_document_template WHERE code = 'PRINT_CARD'"
+        ).fetchone()
+        pp_template = connection.execute(
+            "SELECT layout_schema FROM am_document_template WHERE code = 'PP_CARD'"
+        ).fetchone()
+    finally:
+        connection.close()
+
+    process_columns = (
+        parse_layout_columns(process_template["layout_schema"]) if process_template else ()
+    )
+    pp_columns = parse_layout_columns(pp_template["layout_schema"]) if pp_template else ()
+
+    generator = PrintCardGenerator()
+    process_card = generator.generate_process_card(planning_result, columns=process_columns)
+    postprocessing_card = generator.generate_postprocessing_card(planning_result, columns=pp_columns)
+
+    pdf_bytes = await run_heavy(generate_print_card_pdf, process_card, postprocessing_card)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="print_process_card.pdf"'},
+    )
 
 
 @router.post("/manufacturing/approval")
@@ -576,6 +720,7 @@ async def simulate_metal_manufacturing(drawing: UploadFile) -> dict:
     planning_result = planning_service.plan(
         part_name=drawing_model.title_block.part_name if drawing_model else None,
         material_grade=drawing_model.title_block.material if drawing_model else None,
+        blank_designation=drawing_model.title_block.blank_designation if drawing_model else None,
     )
 
     plan = _simulation_service.build_metal_plan(planning_result)
@@ -605,6 +750,7 @@ async def simulate_print_manufacturing(
         part_name=step.product_name or None,
         am_technology_code=am_technology_code,
         material_group_code=material_group_code,
+        bounding_box=step.bounding_box,
     )
 
     plan = _simulation_service.build_print_plan(planning_result)
@@ -665,6 +811,7 @@ async def assess_quality_metal(
         planning_result = planning_service.plan(
             part_name=drawing_model.title_block.part_name if drawing_model else None,
             material_grade=drawing_model.title_block.material if drawing_model else None,
+            blank_designation=drawing_model.title_block.blank_designation if drawing_model else None,
         )
         simulation_plan = _simulation_service.build_metal_plan(planning_result)
 
@@ -705,6 +852,7 @@ async def assess_quality_print(
             part_name=step.product_name or None,
             am_technology_code=am_technology_code,
             material_group_code=material_group_code,
+            bounding_box=step.bounding_box,
         )
         simulation_plan = _simulation_service.build_print_plan(planning_result)
 

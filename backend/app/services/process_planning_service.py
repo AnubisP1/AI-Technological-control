@@ -19,12 +19,14 @@ equipment_type_workpiece_type, equipment_type_operation_type), без
 
 from __future__ import annotations
 
+from app.domain.material_text import extract_blank_diameter_mm
 from app.domain.process_planning.process_model import (
     PlannedOperation,
     ProcessPlanningResult,
     TechnicalRequirementLine,
 )
 from app.domain.process_planning.process_planning_lookup_port import IProcessPlanningLookup
+from app.services.cutting_mode_calculator import CuttingModeCalculator
 
 _DEFAULT_WORKPIECE_TYPE_CODE = "ROLLED_BAR"
 
@@ -37,9 +39,14 @@ _OPERATION_ORDER = ["TURN_ROUGH", "TURN_FIN", "MILL", "DRILL", "GRIND", "CONTROL
 class ProcessPlanningService:
     def __init__(self, lookup: IProcessPlanningLookup) -> None:
         self._lookup = lookup
+        self._cutting_mode_calculator = CuttingModeCalculator(lookup)
 
     def plan(
-        self, *, part_name: str | None, material_grade: str | None
+        self,
+        *,
+        part_name: str | None,
+        material_grade: str | None,
+        blank_designation: str | None = None,
     ) -> ProcessPlanningResult:
         warnings: list[str] = []
 
@@ -97,7 +104,18 @@ class ProcessPlanningService:
                 warnings=tuple(warnings),
             )
 
-        operations = self._plan_operations(equipment_types, warnings)
+        blank_diameter_mm = (
+            extract_blank_diameter_mm(blank_designation) if blank_designation else None
+        )
+        if blank_designation and blank_diameter_mm is None:
+            warnings.append(
+                f"Диаметр заготовки не распознан в обозначении '{blank_designation}' — "
+                "расчёт режимов резания невозможен без диаметра."
+            )
+
+        operations = self._plan_operations(
+            equipment_types, warnings, material_group_id, blank_diameter_mm
+        )
         technical_requirements = self._collect_technical_requirements(
             operations, material_group_id
         )
@@ -109,6 +127,7 @@ class ProcessPlanningService:
             operations=operations,
             warnings=tuple(warnings),
             technical_requirements=technical_requirements,
+            blank_diameter_mm=blank_diameter_mm,
         )
 
     def _collect_technical_requirements(
@@ -144,7 +163,13 @@ class ProcessPlanningService:
         )
         return tuple(lines)
 
-    def _plan_operations(self, equipment_types, warnings: list[str]) -> tuple[PlannedOperation, ...]:
+    def _plan_operations(
+        self,
+        equipment_types,
+        warnings: list[str],
+        material_group_id: int,
+        blank_diameter_mm: float | None,
+    ) -> tuple[PlannedOperation, ...]:
         available_operation_types_by_equipment = {
             et.id: self._lookup.find_operation_types_for_equipment_type(et.id)
             for et in equipment_types
@@ -177,6 +202,19 @@ class ProcessPlanningService:
 
             tooling_types = self._lookup.find_tooling_types_for_operation_type(operation_type.id)
 
+            cutting_mode = self._cutting_mode_calculator.calculate(
+                operation_type_id=operation_type.id,
+                operation_type_code=operation_type.code,
+                material_group_id=material_group_id,
+                blank_diameter_mm=blank_diameter_mm,
+                spindle_speed_min_rpm=(
+                    equipment_model.spindle_speed_min_rpm if equipment_model else None
+                ),
+                spindle_speed_max_rpm=(
+                    equipment_model.spindle_speed_max_rpm if equipment_model else None
+                ),
+            )
+
             planned.append(
                 PlannedOperation(
                     sequence_no=sequence_no,
@@ -187,6 +225,7 @@ class ProcessPlanningService:
                         equipment_model.model_name if equipment_model else None
                     ),
                     tooling_names=tuple(t.name for t in tooling_types),
+                    cutting_mode=cutting_mode,
                 )
             )
             sequence_no += 5

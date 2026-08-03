@@ -12,20 +12,28 @@
 
 from __future__ import annotations
 
+from app.domain.cad.step_model import BoundingBox
 from app.domain.process_planning.print_planning_lookup_port import IPrintPlanningLookup
 from app.domain.process_planning.print_process_model import (
     PlannedPostprocessingStep,
     PrintProcessPlanningResult,
     PrintQualityStandard,
 )
+from app.services.print_parameter_calculator import PrintParameterCalculator
 
 
 class PrintProcessPlanningService:
     def __init__(self, lookup: IPrintPlanningLookup) -> None:
         self._lookup = lookup
+        self._print_parameter_calculator = PrintParameterCalculator(lookup)
 
     def plan(
-        self, *, part_name: str | None, am_technology_code: str, material_group_code: str
+        self,
+        *,
+        part_name: str | None,
+        am_technology_code: str,
+        material_group_code: str,
+        bounding_box: BoundingBox | None = None,
     ) -> PrintProcessPlanningResult:
         am_technology_id = self._lookup.find_am_technology_id_by_code(am_technology_code)
         if am_technology_id is None:
@@ -98,6 +106,11 @@ class PrintProcessPlanningService:
             )
 
         quality_standard = self._build_quality_standard(am_technology_id)
+        print_estimate = self._print_parameter_calculator.calculate(
+            am_technology_id=am_technology_id,
+            am_material_group_id=material_group.id,
+            bounding_box=bounding_box,
+        )
 
         return PrintProcessPlanningResult(
             part_name=part_name,
@@ -107,6 +120,7 @@ class PrintProcessPlanningService:
             postprocessing_steps=tuple(postprocessing),
             warnings=tuple(warnings),
             quality_standard=quality_standard,
+            print_estimate=print_estimate,
         )
 
     def _build_quality_standard(self, am_technology_id: int) -> PrintQualityStandard | None:

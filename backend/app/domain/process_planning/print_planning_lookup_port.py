@@ -43,6 +43,8 @@ class TechnologyToleranceRecord:
     tolerance_max_mm: float
     min_wall_thickness_mm: float
     max_wall_thickness_mm: float | None
+    layer_resolution_min_mm: float
+    layer_resolution_max_mm: float
     roughness_ra_raw_min_um: float
     roughness_ra_raw_max_um: float
     roughness_ra_finished_min_um: float | None
@@ -80,6 +82,17 @@ class OperatingConditionRecord:
     range_max: float | None
     unit: str | None
     description: str | None
+
+
+@dataclass(frozen=True)
+class MaterialDensityRecord:
+    density_g_cm3: float
+
+
+@dataclass(frozen=True)
+class PrintSpeedReferenceRecord:
+    volumetric_rate_mm3_s: float
+    source: str
 
 
 @dataclass(frozen=True)
@@ -127,3 +140,7 @@ class IPrintPlanningLookup(Protocol):
     def find_material_recommendations(
         self, part_application_class_id: int, operating_condition_ids: tuple[int, ...]
     ) -> tuple[MaterialRecommendationRow, ...]: ...
+    def find_material_density(self, am_material_group_id: int) -> MaterialDensityRecord | None: ...
+    def find_print_speed_reference(
+        self, am_technology_id: int
+    ) -> PrintSpeedReferenceRecord | None: ...

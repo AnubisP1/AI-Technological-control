@@ -2,11 +2,13 @@
 пластик) из результата автоподбора (PrintProcessPlanningResult) и
 шаблонов am_document_template.
 
-Как и для маршрутной карты металла: графы, которые автоподбор не
-рассчитывает (высота слоя, время печати, расход материала, длительность
-и температура постобработки), остаются пустыми — не заполняются
-выдуманными значениями, т.к. расчёт параметров печати вне объёма
-упрощённого автоподбора (Фаза 4).
+Высота слоя/время печати/расход материала заполняются из
+PrintEstimate (Фаза 17, PrintParameterCalculator), если он рассчитан
+(нужен bounding box детали) — иначе остаются пустыми, не заполняются
+выдуманными значениями. Заполнение (infill %) не рассчитывается —
+упрощённый автоподбор не варьирует этот параметр по геометрии/условиям
+эксплуатации. Длительность/температура постобработки — вне объёма
+(зависят от конкретного оборудования, не подбираемого на этой фазе).
 """
 
 from __future__ import annotations
@@ -28,15 +30,16 @@ class PrintCardGenerator:
     ) -> PrintProcessCard:
         # columns: ["Технология", "Принтер", "Материал", "Высота слоя",
         #           "Заполнение", "Время печати", "Расход материала"]
+        estimate = planning_result.print_estimate
         row = PrintCardRow(
             values=(
                 planning_result.am_technology_code,
                 planning_result.printer_model_name or "не подобран",
                 planning_result.am_material_group_name or "не определён",
-                _NOT_CALCULATED,  # высота слоя — не рассчитывается автоподбором
-                _NOT_CALCULATED,  # заполнение
-                _NOT_CALCULATED,  # время печати
-                _NOT_CALCULATED,  # расход материала
+                f"{estimate.layer_height_mm:g} мм" if estimate else _NOT_CALCULATED,
+                _NOT_CALCULATED,  # заполнение — не варьируется упрощённым автоподбором
+                f"{estimate.estimated_print_time_min:g} мин" if estimate else _NOT_CALCULATED,
+                f"{estimate.estimated_material_g:g} г" if estimate else _NOT_CALCULATED,
             )
         )
         qs = planning_result.quality_standard
@@ -58,6 +61,7 @@ class PrintCardGenerator:
             columns=columns,
             row=row,
             quality_standard=quality_standard,
+            print_estimate_note=estimate.source_note if estimate else None,
         )
 
     def generate_postprocessing_card(
