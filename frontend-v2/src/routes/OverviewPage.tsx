@@ -1,33 +1,17 @@
-import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { motion } from 'framer-motion'
-import { ScanSearch, ClipboardCheck, Factory, ShieldCheck, FileText, ArrowRight } from 'lucide-react'
+import { ScanSearch, ClipboardCheck, Factory, ShieldCheck } from 'lucide-react'
 import { Container } from '@/components/marketing/Section'
-import { useWorkflow } from '@/lib/workflow'
+import { AssistantChatPanel } from '@/components/overview/AssistantChatPanel'
 
 /**
- * "Обзор" (Фаза 17, часть 3) — сводная страница рабочего пространства,
- * по идее из UI UX reference/ai_technologist_site/index.html. В отличие
- * от прототипа (выдуманные метрики "96.8% уверенность AI", "Al 7075-T6",
- * "12 документов" для несуществующего проекта AI-TX-0248), здесь
- * показаны только реальные факты: статус backend через /health (тот же
- * запрос, что уже использует StatusPill) и состояние текущей загруженной
- * детали из WorkflowProvider — до загрузки детали карточка честно
- * говорит "деталь не загружена", а не показывает похожий на реальный,
- * но фиктивный проект.
+ * "Обзор" (Фаза 17, часть 3, доработана в части 5) — сводная страница
+ * рабочего пространства, по идее из UI UX reference/ai_technologist_site/
+ * index.html. Вместо карточек "Состояние backend"/"Текущая деталь" (см.
+ * git-историю) — по прямому запросу пользователя ("вместо состояния и
+ * текущей детали добавь окно с чатом ИИ-Технологом") здесь окно чата с
+ * AI-ассистентом по НСИ, см. AssistantChatPanel.
  */
-
-interface HealthResponse {
-  status: string
-  cpu_thread_budget: number
-  cpu_count_total: number
-}
-
-async function fetchHealth(): Promise<HealthResponse> {
-  const response = await fetch('/api/health')
-  if (!response.ok) throw new Error('Backend недоступен')
-  return response.json()
-}
 
 const MODULES = [
   {
@@ -60,30 +44,7 @@ const MODULES = [
   },
 ] as const
 
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className={`rounded-2xl border border-border bg-surface p-6 ${className}`}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
 export function OverviewPage() {
-  const { pendingInput } = useWorkflow()
-  const health = useQuery({ queryKey: ['health'], queryFn: fetchHealth, refetchInterval: 15_000 })
-
-  const partLabel =
-    pendingInput?.kind === 'metal'
-      ? pendingInput.drawing.name
-      : pendingInput?.kind === 'plastic'
-        ? pendingInput.stepModel.name
-        : null
-
   return (
     <Container className="max-w-6xl py-10">
       <div className="mb-8">
@@ -95,59 +56,8 @@ export function OverviewPage() {
         </p>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card>
-          <div className="mb-3 font-mono text-[11px] uppercase tracking-widest text-ink-dim">Состояние backend</div>
-          {health.isLoading && <div className="text-sm text-ink-dim">Проверка соединения…</div>}
-          {health.isError && <div className="text-sm text-red-600">Backend недоступен</div>}
-          {health.data && (
-            <div className="flex items-center gap-6">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-medium text-ink">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Локальный контур активен
-                </div>
-                <div className="mt-1 text-xs text-ink-dim">Офлайн — без обращений к внешним сервисам</div>
-              </div>
-              <div className="ml-auto text-right">
-                <div className="text-2xl font-bold tabular-nums text-ink">
-                  {health.data.cpu_thread_budget}/{health.data.cpu_count_total}
-                </div>
-                <div className="text-[11px] text-ink-dim">потоков CPU-бюджета</div>
-              </div>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <div className="mb-3 font-mono text-[11px] uppercase tracking-widest text-ink-dim">Текущая деталь</div>
-          {partLabel ? (
-            <div>
-              <div className="text-sm font-medium text-ink">{partLabel}</div>
-              <div className="mt-1 text-xs text-ink-dim">
-                {pendingInput?.kind === 'metal' ? 'Металл — маршрут механообработки' : 'Пластик — аддитивное производство'}
-              </div>
-              <Link
-                to="/app/documents"
-                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Перейти к документам
-              </Link>
-            </div>
-          ) : (
-            <div>
-              <div className="text-sm text-ink-dim">Деталь ещё не загружена.</div>
-              <Link
-                to="/app/analysis"
-                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline"
-              >
-                Загрузить чертёж или STEP-модель
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-          )}
-        </Card>
+      <div className="mb-6 h-[420px]">
+        <AssistantChatPanel />
       </div>
 
       <div className="mb-3 font-mono text-xs uppercase tracking-widest text-ink-dim">Сквозной путь системы</div>
