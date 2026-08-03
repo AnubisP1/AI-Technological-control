@@ -22,6 +22,15 @@ interface WorkflowState {
    */
   nsiExpertiseAcknowledged: boolean
   acknowledgeNsiExpertise: () => void
+  /**
+   * Согласован ли комплект ТД главным технологом — решение теперь
+   * принимается во всплывающем диалоге на экране "Экспертиза НСИ"
+   * (см. ApprovalDialog.tsx), не на самой странице "Производство",
+   * поэтому факт согласования нужно передать между экранами так же,
+   * как pendingInput. Сбрасывается при загрузке новой детали.
+   */
+  approvalApproved: boolean
+  markApproved: () => void
 }
 
 const WorkflowContext = createContext<WorkflowState | null>(null)
@@ -29,9 +38,11 @@ const WorkflowContext = createContext<WorkflowState | null>(null)
 export function WorkflowProvider({ children }: { children: ReactNode }) {
   const [pendingInput, setPendingInputState] = useState<WorkflowInput | null>(null)
   const [nsiExpertiseAcknowledged, setNsiExpertiseAcknowledged] = useState(false)
+  const [approvalApproved, setApprovalApproved] = useState(false)
 
   function setPendingInput(input: WorkflowInput | null) {
     setNsiExpertiseAcknowledged(false)
+    setApprovalApproved(false)
     setPendingInputState(input)
   }
 
@@ -39,9 +50,20 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     setNsiExpertiseAcknowledged(true)
   }
 
+  function markApproved() {
+    setApprovalApproved(true)
+  }
+
   return (
     <WorkflowContext.Provider
-      value={{ pendingInput, setPendingInput, nsiExpertiseAcknowledged, acknowledgeNsiExpertise }}
+      value={{
+        pendingInput,
+        setPendingInput,
+        nsiExpertiseAcknowledged,
+        acknowledgeNsiExpertise,
+        approvalApproved,
+        markApproved,
+      }}
     >
       {children}
     </WorkflowContext.Provider>
