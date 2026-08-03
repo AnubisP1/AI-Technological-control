@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { motion } from 'framer-motion'
-import { CheckCircle2, XCircle, PlayCircle, ArrowRight } from 'lucide-react'
+import { CheckCircle2, XCircle, PlayCircle, ArrowRight, ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
 import { MachineIcon } from '@/components/production/MachineIcon'
@@ -39,7 +39,8 @@ function ProgramOutput({ lines, revealCount }: { lines: string[]; revealCount: n
 
 export function ProductionPage() {
   const navigate = useNavigate()
-  const { pendingInput } = useWorkflow()
+  const { pendingInput, nsiExpertiseAcknowledged } = useWorkflow()
+  const readyForApproval = Boolean(pendingInput) && nsiExpertiseAcknowledged
 
   const [approval, setApproval] = useState<ApprovalResult | null>(null)
   const [rejectComment, setRejectComment] = useState('')
@@ -92,6 +93,51 @@ export function ProductionPage() {
     setSimulationDone(false)
   }
 
+  if (!readyForApproval) {
+    return (
+      <Container className="max-w-2xl py-10">
+        <PageBackdrop {...BACKGROUND_PART} />
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">Производство</h1>
+        <p className="mb-8 text-sm text-ink-dim">
+          Согласование комплекта технологической документации главным технологом.
+        </p>
+
+        <div className="flex flex-col items-start gap-4 rounded-2xl border border-dashed border-border bg-surface p-6">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+            <ClipboardCheck className="h-5 w-5" />
+          </span>
+          {!pendingInput ? (
+            <>
+              <p className="text-sm text-ink">Деталь ещё не загружена.</p>
+              <p className="text-xs text-ink-dim">
+                Согласование доступно только после анализа детали и экспертизы соответствия НСИ.
+              </p>
+              <Link to="/app/analysis" className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline">
+                Перейти к анализу детали
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-ink">Экспертиза соответствия НСИ ещё не пройдена.</p>
+              <p className="text-xs text-ink-dim">
+                Главный технолог согласовывает комплект технологической документации только после
+                того, как деталь прошла сверку с базой НСИ.
+              </p>
+              <Link
+                to="/app/nsi-expertise"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+              >
+                Перейти к экспертизе НСИ
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </>
+          )}
+        </div>
+      </Container>
+    )
+  }
+
   if (!approval?.can_start_simulation) {
     return (
       <Container className="max-w-2xl py-10">
@@ -102,11 +148,6 @@ export function ProductionPage() {
         </p>
 
         <div className="rounded-2xl border border-border bg-surface p-6">
-          {!pendingInput && (
-            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Сначала сгенерируйте документацию на экране «Анализ детали».
-            </div>
-          )}
           <div className="flex gap-3">
             <Button disabled={approveMutation.isPending} onClick={() => approveMutation.mutate()}>
               <CheckCircle2 className="h-4 w-4" />

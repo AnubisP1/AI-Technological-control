@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, FileText, Search } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, FileText, Search, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
 import { PageBackdrop } from '@/components/PageBackdrop'
@@ -122,7 +123,8 @@ function StatCard({ label, count, total, className }: { label: string; count: nu
 }
 
 export function NsiExpertisePage() {
-  const { pendingInput } = useWorkflow()
+  const navigate = useNavigate()
+  const { pendingInput, acknowledgeNsiExpertise } = useWorkflow()
   const [review, setReview] = useState<KdReviewReport | null>(null)
   const [routeCard, setRouteCard] = useState<RouteCard | null>(null)
   const [search, setSearch] = useState('')
@@ -188,10 +190,25 @@ export function NsiExpertisePage() {
         </Button>
       </div>
 
-      {!drawing && !hasData && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Чертёж не загружен. Сначала загрузите чертёж металлической детали на экране «Анализ детали», затем
-          вернитесь сюда и нажмите «Запустить сверку».
+      {!pendingInput && !hasData && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Деталь не загружена. Сначала пройдите «Анализ детали», затем вернитесь сюда и нажмите
+          «Запустить сверку».
+        </div>
+      )}
+
+      {pendingInput?.kind === 'plastic' && (
+        <div className="mb-6 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-ink-dim">
+          Экспертиза соответствия НСИ сверяет чертёж с базой материалов и заготовок — для пластиковых
+          деталей входных данных является только STEP-модель, без чертежа, поэтому этот шаг к ним не
+          применяется. Материал для печати уже подобран автоподбором на экране «Анализ детали». Можно
+          сразу переходить к согласованию.
+          <div className="mt-3">
+            <Button size="sm" onClick={() => { acknowledgeNsiExpertise(); navigate('/app/production') }}>
+              Перейти к согласованию
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       )}
 
@@ -286,6 +303,23 @@ export function NsiExpertisePage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-border bg-surface p-6">
+            {counts.not_ok > 0 && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                В реестре есть {counts.not_ok} несоответствующих пункта — проверьте их перед передачей
+                на согласование главному технологу.
+              </div>
+            )}
+            <p className="mb-3 text-sm text-ink-dim">
+              Экспертиза проведена. Главный технолог может согласовать комплект технологической
+              документации на экране «Производство».
+            </p>
+            <Button onClick={() => { acknowledgeNsiExpertise(); navigate('/app/production') }}>
+              Перейти к согласованию
+              <ArrowRight className="h-4 w-4" />
+            </Button>
           </div>
         </motion.div>
       )}
