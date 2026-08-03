@@ -7,6 +7,7 @@ import { ProductionPage } from '@/routes/ProductionPage'
 import { QualityPage } from '@/routes/QualityPage'
 import { DigitalTwinPage } from '@/routes/DigitalTwinPage'
 import { NsiExpertisePage } from '@/routes/NsiExpertisePage'
+import { NsiBrowserPage } from '@/routes/NsiBrowserPage'
 import { DocumentsPage } from '@/routes/DocumentsPage'
 import { WorkflowProvider } from '@/lib/workflow'
 
@@ -69,6 +70,14 @@ function App() {
             element={
               <AppShell>
                 <DocumentsPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/app/nsi-browser"
+            element={
+              <AppShell>
+                <NsiBrowserPage />
               </AppShell>
             }
           />

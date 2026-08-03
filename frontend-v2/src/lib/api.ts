@@ -64,6 +64,21 @@ export async function analyzeKd(params: {
   return parseJsonOrThrow(response)
 }
 
+/**
+ * Реальная тесселяция STEP -> STL (Фаза 17, часть 5) — возвращает null,
+ * если backend не смог её построить (pythonocc-core не настроен, файл
+ * не читается OCC и т.д., см. step_mesh_exporter.py) — это ожидаемый
+ * fallback-путь, не ошибка: PartViewer в этом случае показывает
+ * параметрический прокси-бокс, как и раньше.
+ */
+export async function fetchStepMesh(stepModel: File): Promise<ArrayBuffer | null> {
+  const form = new FormData()
+  form.append('step_model', stepModel)
+  const response = await fetch(`${API_BASE}/kd/step-mesh`, { method: 'POST', body: form })
+  if (!response.ok) return null
+  return response.arrayBuffer()
+}
+
 // ---------- Модуль 1.2: оценка КД ----------
 
 export type MatchStatus = 'matched' | 'partial_match' | 'not_found'
@@ -416,6 +431,52 @@ export async function assessQualityPrint(params: {
   const response = await fetch(`${API_BASE}/quality/assess/print?${query}`, {
     method: 'POST',
     body: form,
+  })
+  return parseJsonOrThrow(response)
+}
+
+// ---------- Фаза 17, часть 5: просмотрщик БД НСИ целиком ----------
+
+export type NsiDatabaseName = 'metal' | 'additive'
+
+export interface NsiTableSummary {
+  name: string
+  row_count: number
+}
+
+export async function fetchNsiTables(database: NsiDatabaseName): Promise<NsiTableSummary[]> {
+  const response = await fetch(`${API_BASE}/nsi/${database}/tables`)
+  return parseJsonOrThrow(response)
+}
+
+export interface NsiTableContent {
+  name: string
+  columns: string[]
+  rows: string[][]
+  total_row_count: number
+  truncated: boolean
+}
+
+export async function fetchNsiTableContent(
+  database: NsiDatabaseName,
+  tableName: string
+): Promise<NsiTableContent> {
+  const response = await fetch(`${API_BASE}/nsi/${database}/tables/${encodeURIComponent(tableName)}`)
+  return parseJsonOrThrow(response)
+}
+
+// ---------- Фаза 17, часть 5: AI-ассистент по НСИ (страница "Обзор") ----------
+
+export interface ChatReply {
+  text: string
+  generated_by: 'llm' | 'template'
+}
+
+export async function askAssistant(question: string): Promise<ChatReply> {
+  const response = await fetch(`${API_BASE}/assistant/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
   })
   return parseJsonOrThrow(response)
 }
