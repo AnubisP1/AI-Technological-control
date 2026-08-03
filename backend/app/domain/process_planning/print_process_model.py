@@ -36,6 +36,20 @@ class PrintQualityStandard:
 
 
 @dataclass(frozen=True)
+class PrintEstimate:
+    """Оценка параметров печати (высота слоя/время/расход материала) —
+    Фаза 17, по объёму STEP bounding box детали (не по истинному объёму
+    тела — тесселяция геометрии не строится, см. dev/PLAN.md), поэтому
+    явно помечена как оценка по габаритному объёму, а не точный расчёт
+    по слайсеру."""
+
+    layer_height_mm: float
+    estimated_print_time_min: float
+    estimated_material_g: float
+    source_note: str
+
+
+@dataclass(frozen=True)
 class PrintProcessPlanningResult:
     part_name: str | None
     am_technology_code: str
@@ -44,6 +58,7 @@ class PrintProcessPlanningResult:
     postprocessing_steps: tuple[PlannedPostprocessingStep, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
     quality_standard: PrintQualityStandard | None = None
+    print_estimate: PrintEstimate | None = None
 
     @property
     def is_empty(self) -> bool:

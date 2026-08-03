@@ -26,6 +26,8 @@ class EquipmentModelRecord:
     id: int
     equipment_type_id: int
     model_name: str
+    spindle_speed_min_rpm: int | None = None
+    spindle_speed_max_rpm: int | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,30 @@ class SurfaceHardeningMethodRecord:
     method_name: str
     reference_instruction: str
     applicable_to: str | None
+
+
+@dataclass(frozen=True)
+class CuttingModeFormulaRecord:
+    tool_life_min: float
+    cv: float
+    m: float
+    xv: float
+    yv: float
+    source: str
+
+
+@dataclass(frozen=True)
+class FeedReferenceRecord:
+    feed_mm_rev_min: float
+    feed_mm_rev_max: float
+    depth_of_cut_mm_min: float | None
+    depth_of_cut_mm_max: float | None
+    source: str
+
+
+@dataclass(frozen=True)
+class MaterialMachinabilityRecord:
+    machinability_index: float
 
 
 class IProcessPlanningLookup(Protocol):
@@ -71,3 +97,12 @@ class IProcessPlanningLookup(Protocol):
     def find_surface_hardening_methods_for_material_group(
         self, material_group_id: int
     ) -> tuple[SurfaceHardeningMethodRecord, ...]: ...
+    def find_cutting_mode_formula(
+        self, operation_type_id: int
+    ) -> CuttingModeFormulaRecord | None: ...
+    def find_feed_reference(
+        self, operation_type_id: int, material_group_id: int
+    ) -> FeedReferenceRecord | None: ...
+    def find_material_machinability(
+        self, material_group_id: int
+    ) -> MaterialMachinabilityRecord | None: ...

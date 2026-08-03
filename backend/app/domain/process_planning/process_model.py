@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.domain.process_planning.cutting_mode_model import CuttingModeResult
+
 
 @dataclass(frozen=True)
 class PlannedOperation:
@@ -21,6 +23,7 @@ class PlannedOperation:
     equipment_type_code: str
     equipment_model_name: str | None  # None, если подходящая модель не найдена в справочнике
     tooling_names: tuple[str, ...] = field(default_factory=tuple)
+    cutting_mode: CuttingModeResult | None = None  # None — расчёт режимов не выполнялся (нет диаметра и т.п.)
 
 
 @dataclass(frozen=True)
@@ -43,6 +46,7 @@ class ProcessPlanningResult:
     operations: tuple[PlannedOperation, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
     technical_requirements: tuple[TechnicalRequirementLine, ...] = field(default_factory=tuple)
+    blank_diameter_mm: float | None = None  # извлечён из обозначения заготовки чертежа, для расчёта режимов резания
 
     @property
     def is_empty(self) -> bool:

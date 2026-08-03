@@ -7,9 +7,12 @@ from pathlib import Path
 
 from app.domain.material_text import extract_grade_part, normalize_grade
 from app.domain.process_planning.process_planning_lookup_port import (
+    CuttingModeFormulaRecord,
     EquipmentModelRecord,
     EquipmentTypeRecord,
+    FeedReferenceRecord,
     MachiningRequirementRecord,
+    MaterialMachinabilityRecord,
     OperationTypeRecord,
     SurfaceHardeningMethodRecord,
     ToolingTypeRecord,
@@ -92,7 +95,8 @@ class SqliteProcessPlanningLookup:
         connection = connect(self._metal_db_path)
         try:
             row = connection.execute(
-                "SELECT id, equipment_type_id, model_name FROM equipment_model "
+                "SELECT id, equipment_type_id, model_name, "
+                "spindle_speed_min_rpm, spindle_speed_max_rpm FROM equipment_model "
                 "WHERE equipment_type_id = ? LIMIT 1",
                 (equipment_type_id,),
             ).fetchone()
@@ -102,6 +106,8 @@ class SqliteProcessPlanningLookup:
                 id=row["id"],
                 equipment_type_id=row["equipment_type_id"],
                 model_name=row["model_name"],
+                spindle_speed_min_rpm=row["spindle_speed_min_rpm"],
+                spindle_speed_max_rpm=row["spindle_speed_max_rpm"],
             )
         finally:
             connection.close()
@@ -182,5 +188,73 @@ class SqliteProcessPlanningLookup:
                 )
                 for row in rows
             )
+        finally:
+            connection.close()
+
+    def find_cutting_mode_formula(
+        self, operation_type_id: int
+    ) -> CuttingModeFormulaRecord | None:
+        connection = connect(self._metal_db_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT tool_life_min, cv, m, xv, yv, source
+                FROM cutting_mode_formula
+                WHERE operation_type_id = ?
+                LIMIT 1
+                """,
+                (operation_type_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return CuttingModeFormulaRecord(
+                tool_life_min=row["tool_life_min"],
+                cv=row["cv"],
+                m=row["m"],
+                xv=row["xv"],
+                yv=row["yv"],
+                source=row["source"],
+            )
+        finally:
+            connection.close()
+
+    def find_feed_reference(
+        self, operation_type_id: int, material_group_id: int
+    ) -> FeedReferenceRecord | None:
+        connection = connect(self._metal_db_path)
+        try:
+            row = connection.execute(
+                """
+                SELECT feed_mm_rev_min, feed_mm_rev_max,
+                       depth_of_cut_mm_min, depth_of_cut_mm_max, source
+                FROM feed_reference
+                WHERE operation_type_id = ? AND material_group_id = ?
+                """,
+                (operation_type_id, material_group_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return FeedReferenceRecord(
+                feed_mm_rev_min=row["feed_mm_rev_min"],
+                feed_mm_rev_max=row["feed_mm_rev_max"],
+                depth_of_cut_mm_min=row["depth_of_cut_mm_min"],
+                depth_of_cut_mm_max=row["depth_of_cut_mm_max"],
+                source=row["source"],
+            )
+        finally:
+            connection.close()
+
+    def find_material_machinability(
+        self, material_group_id: int
+    ) -> MaterialMachinabilityRecord | None:
+        connection = connect(self._metal_db_path)
+        try:
+            row = connection.execute(
+                "SELECT machinability_index FROM material_group WHERE id = ?",
+                (material_group_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return MaterialMachinabilityRecord(machinability_index=row["machinability_index"])
         finally:
             connection.close()

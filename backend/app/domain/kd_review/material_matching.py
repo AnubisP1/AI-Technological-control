@@ -14,6 +14,7 @@ import re
 
 from app.domain.kd_review.nsi_lookup_port import MaterialRecord, WorkpieceBlankRecord
 from app.domain.kd_review.review_model import BlankCheck, MaterialCheck, MatchStatus
+from app.domain.material_text import extract_blank_diameter_mm as _extract_blank_diameter_mm
 from app.domain.material_text import extract_gost_number as _extract_gost_number
 from app.domain.material_text import extract_grade_part as _extract_grade_part
 from app.domain.material_text import normalize_grade as _normalize_grade
@@ -79,7 +80,11 @@ def match_blank(
 
     gost_number = _extract_gost_number(blank_from_drawing)
     diameter_match = re.search(r"[ØO]\s*(\d+(?:[.,]\d+)?)", blank_from_drawing, re.IGNORECASE)
-    drawing_diameter = float(diameter_match.group(1).replace(",", ".")) if diameter_match else None
+    drawing_diameter = (
+        float(diameter_match.group(1).replace(",", "."))
+        if diameter_match
+        else _extract_blank_diameter_mm(blank_from_drawing)
+    )
 
     for record in known_blanks:
         record_gost = _extract_gost_number(record.gost_standard or "")
@@ -98,13 +103,19 @@ def match_blank(
                 matched_designation=record.designation,
                 note="Заготовка найдена в справочнике НСИ (типоразмер совпал).",
             )
+        diameter_note = (
+            f"диаметр по чертежу ({drawing_diameter:g} мм) не совпадает со "
+            f"справочным ({record.diameter_mm:g} мм)"
+            if drawing_diameter is not None and record.diameter_mm is not None
+            else "конкретный типоразмер (диаметр) в НСИ отсутствует"
+        )
         return BlankCheck(
             blank_from_drawing=blank_from_drawing,
             status=MatchStatus.PARTIAL_MATCH,
             matched_designation=record.designation,
             note=(
                 f"ГОСТ заготовки найден в справочнике ({record.designation}), "
-                "но конкретный типоразмер (диаметр) в НСИ отсутствует — "
+                f"но {diameter_note} — "
                 "требуется добавить в справочник или уточнить у технолога."
             ),
         )

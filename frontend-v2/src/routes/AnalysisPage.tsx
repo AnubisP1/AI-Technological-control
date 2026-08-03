@@ -17,12 +17,24 @@ import {
   generateRouteCard,
   generatePrintRouteCard,
   downloadKdReviewPdf,
+  downloadRouteCardPdf,
+  downloadOperationCardPdf,
+  downloadPrintRouteCardPdf,
   type KdAnalysisResult,
   type KdReviewReport,
   type RouteCard as RouteCardType,
   type PrintRouteCardResponse,
   type MaterialRecommendationOption,
 } from '@/lib/api'
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
 
 function Card({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
@@ -104,12 +116,35 @@ export function AnalysisPage() {
     mutationFn: async () => {
       if (!drawing) return
       const blob = await downloadKdReviewPdf({ drawing })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'kd_review_report.pdf'
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(blob, 'kd_review_report.pdf')
+    },
+  })
+
+  const routeCardPdfMutation = useMutation({
+    mutationFn: async () => {
+      if (!drawing) return
+      const blob = await downloadRouteCardPdf({ drawing })
+      downloadBlob(blob, 'route_card.pdf')
+    },
+  })
+
+  const operationCardPdfMutation = useMutation({
+    mutationFn: async () => {
+      if (!drawing) return
+      const blob = await downloadOperationCardPdf({ drawing })
+      downloadBlob(blob, 'operation_card.pdf')
+    },
+  })
+
+  const printCardPdfMutation = useMutation({
+    mutationFn: async () => {
+      if (!stepModel || !selectedOption) return
+      const blob = await downloadPrintRouteCardPdf({
+        stepModel,
+        amTechnologyCode: selectedOption.am_technology_code,
+        materialGroupCode: selectedOption.material_group_code,
+      })
+      downloadBlob(blob, 'print_process_card.pdf')
     },
   })
 
@@ -246,7 +281,31 @@ export function AnalysisPage() {
           )}
 
           {routeCard && (
-            <Card title={`Маршрутная карта — ${routeCard.part_name || 'деталь'}`}>
+            <Card
+              title={`Маршрутная карта — ${routeCard.part_name || 'деталь'}`}
+              action={
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={routeCardPdfMutation.isPending}
+                    onClick={() => routeCardPdfMutation.mutate()}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {routeCardPdfMutation.isPending ? 'Формирование…' : 'Скачать МК (PDF)'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={operationCardPdfMutation.isPending}
+                    onClick={() => operationCardPdfMutation.mutate()}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {operationCardPdfMutation.isPending ? 'Формирование…' : 'Скачать ОК (PDF)'}
+                  </Button>
+                </div>
+              }
+            >
               <p className="mb-3 text-xs text-ink-dim">{routeCard.gost_form}</p>
               <CardTable columns={routeCard.columns} rows={routeCard.rows} />
 
@@ -279,7 +338,20 @@ export function AnalysisPage() {
           )}
 
           {printCards && (
-            <Card title={`Карта техпроцесса печати — ${printCards.process_card.part_name || 'деталь'}`}>
+            <Card
+              title={`Карта техпроцесса печати — ${printCards.process_card.part_name || 'деталь'}`}
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={printCardPdfMutation.isPending}
+                  onClick={() => printCardPdfMutation.mutate()}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {printCardPdfMutation.isPending ? 'Формирование…' : 'Скачать карту (PDF)'}
+                </Button>
+              }
+            >
               <CardTable columns={printCards.process_card.columns} rows={[printCards.process_card.row]} />
 
               {printCards.process_card.quality_standard && (

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.domain.process_planning.print_planning_lookup_port import (
     AmMaterialGroupRecord,
+    MaterialDensityRecord,
     MaterialRecommendationRow,
     OperatingConditionRecord,
     PartApplicationClassRecord,
@@ -14,6 +15,7 @@ from app.domain.process_planning.print_planning_lookup_port import (
     PpToolingStepRecord,
     PrinterModelRecord,
     PrinterTypeRecord,
+    PrintSpeedReferenceRecord,
     TechnologyToleranceRecord,
 )
 from app.infrastructure.db.nsi_db import connect
@@ -127,6 +129,7 @@ class SqlitePrintPlanningLookup:
                 """
                 SELECT tolerance_min_mm, tolerance_max_mm,
                        min_wall_thickness_mm, max_wall_thickness_mm,
+                       layer_resolution_min_mm, layer_resolution_max_mm,
                        roughness_ra_raw_min_um, roughness_ra_raw_max_um,
                        roughness_ra_finished_min_um, roughness_ra_finished_max_um,
                        min_thread_pitch_mm, assembly_clearance_min_mm, assembly_clearance_max_mm,
@@ -143,6 +146,8 @@ class SqlitePrintPlanningLookup:
                 tolerance_max_mm=row["tolerance_max_mm"],
                 min_wall_thickness_mm=row["min_wall_thickness_mm"],
                 max_wall_thickness_mm=row["max_wall_thickness_mm"],
+                layer_resolution_min_mm=row["layer_resolution_min_mm"],
+                layer_resolution_max_mm=row["layer_resolution_max_mm"],
                 roughness_ra_raw_min_um=row["roughness_ra_raw_min_um"],
                 roughness_ra_raw_max_um=row["roughness_ra_raw_max_um"],
                 roughness_ra_finished_min_um=row["roughness_ra_finished_min_um"],
@@ -329,6 +334,42 @@ class SqlitePrintPlanningLookup:
                     orientation_note=row["orientation_note"],
                 )
                 for row in rows
+            )
+        finally:
+            connection.close()
+
+    def find_material_density(self, am_material_group_id: int) -> MaterialDensityRecord | None:
+        # am_material_group -> am_material в текущих данных всегда 1:1
+        # (см. seed_data.sql) — если группа получит несколько марок с
+        # разной плотностью, здесь понадобится уточнение по конкретной
+        # марке, а не по группе; пока это не требуется.
+        connection = connect(self._additive_db_path)
+        try:
+            row = connection.execute(
+                "SELECT density_g_cm3 FROM am_material "
+                "WHERE am_material_group_id = ? AND density_g_cm3 IS NOT NULL LIMIT 1",
+                (am_material_group_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return MaterialDensityRecord(density_g_cm3=row["density_g_cm3"])
+        finally:
+            connection.close()
+
+    def find_print_speed_reference(
+        self, am_technology_id: int
+    ) -> PrintSpeedReferenceRecord | None:
+        connection = connect(self._additive_db_path)
+        try:
+            row = connection.execute(
+                "SELECT volumetric_rate_mm3_s, source FROM print_speed_reference "
+                "WHERE am_technology_id = ?",
+                (am_technology_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return PrintSpeedReferenceRecord(
+                volumetric_rate_mm3_s=row["volumetric_rate_mm3_s"], source=row["source"]
             )
         finally:
             connection.close()

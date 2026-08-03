@@ -30,6 +30,7 @@ class PrintProcessCard:
     columns: tuple[str, ...]
     row: PrintCardRow
     quality_standard: QualityStandardInfo | None = None
+    print_estimate_note: str | None = None  # источник оценки времени/расхода (Фаза 17), None — не рассчитано
 
 
 @dataclass(frozen=True)
