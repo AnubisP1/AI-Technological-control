@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { cn } from '@/lib/utils'
 
 interface HealthResponse {
   status: string
@@ -12,7 +13,7 @@ async function fetchHealth(): Promise<HealthResponse> {
   return response.json()
 }
 
-export function StatusPill() {
+export function StatusPill({ dark = false }: { dark?: boolean }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['health'],
     queryFn: fetchHealth,
@@ -22,15 +23,20 @@ export function StatusPill() {
   const state = isLoading ? 'loading' : isError ? 'error' : 'ok'
 
   return (
-    <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-ink-dim">
+    <div
+      className={cn(
+        'flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider',
+        dark ? 'border-white/10 bg-white/5 text-white/60' : 'border-border bg-surface text-ink-dim'
+      )}
+    >
       <span
         className={
-          'h-1.5 w-1.5 rounded-full ' +
+          'h-1.5 w-1.5 shrink-0 rounded-full ' +
           (state === 'ok'
             ? 'bg-emerald-500'
             : state === 'error'
               ? 'bg-red-500'
-              : 'bg-ink-dim animate-pulse')
+              : (dark ? 'bg-white/40' : 'bg-ink-dim') + ' animate-pulse')
         }
       />
       {state === 'ok' && data && (
@@ -38,7 +44,7 @@ export function StatusPill() {
           backend online · CPU {data.cpu_thread_budget}/{data.cpu_count_total} потоков
         </span>
       )}
-      {state === 'error' && <span className="text-red-600">backend недоступен</span>}
+      {state === 'error' && <span className={dark ? 'text-red-400' : 'text-red-600'}>backend недоступен</span>}
       {state === 'loading' && <span>проверка backend…</span>}
     </div>
   )
