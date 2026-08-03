@@ -6,9 +6,28 @@ import { PartViewer } from '@/components/PartViewer'
 import { StatusPill } from '@/components/layout/StatusPill'
 import { Container } from '@/components/marketing/Section'
 
+// Реальные габариты сборки БПЛА из тестового fixture (КД для тестов/
+// Пластиковые детали/Архив/Сборка рабочая.STEP), полученные через
+// RegexStepParser — не выдуманные размеры.
+const BACKGROUND_ASSEMBLY = {
+  partName: 'Сборка рабочая (БПЛА)',
+  lengthXMm: 2327.308,
+  lengthYMm: 1056.436,
+  lengthZMm: 2327.308,
+}
+
 export function Hero() {
   return (
-    <section className="relative overflow-hidden bg-dark text-white">
+    <section className="relative min-h-[560px] overflow-hidden bg-dark text-white">
+      <div className="pointer-events-none absolute inset-0">
+        <PartViewer {...BACKGROUND_ASSEMBLY} autoRotate hideOverlay interactive={false} />
+      </div>
+      <div
+        className="pointer-events-none absolute inset-0 bg-gradient-to-r from-dark via-dark/85 to-dark/40"
+      />
+      <div
+        className="pointer-events-none absolute inset-0 bg-gradient-to-t from-dark via-transparent to-dark/40"
+      />
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.07]"
         style={{
@@ -17,12 +36,12 @@ export function Hero() {
           backgroundSize: '48px 48px',
         }}
       />
-      <Container className="relative grid gap-12 py-24 md:grid-cols-2 md:items-center md:py-32">
+      <Container className="relative py-24 md:py-32">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="flex flex-col gap-6"
+          className="flex max-w-2xl flex-col gap-6"
         >
           <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-white/50">
             <span className="h-1.5 w-1.5 rounded-full bg-brand-soft" />
@@ -50,15 +69,6 @@ export function Hero() {
             </Button>
             <StatusPill />
           </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.7, ease: 'easeOut', delay: 0.15 }}
-          className="h-[340px] md:h-[440px]"
-        >
-          <PartViewer partName="Пропеллер БПЛА (пример)" lengthXMm={280} lengthYMm={280} lengthZMm={18} />
         </motion.div>
       </Container>
     </section>

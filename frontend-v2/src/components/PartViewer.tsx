@@ -8,6 +8,9 @@ export interface PartViewerProps {
   lengthYMm: number
   lengthZMm: number
   partName?: string
+  autoRotate?: boolean
+  hideOverlay?: boolean
+  interactive?: boolean
 }
 
 /**
@@ -22,13 +25,14 @@ export interface PartViewerProps {
  * не как честный B-rep.
  */
 function ProxyBox({ lengthXMm, lengthYMm, lengthZMm }: PartViewerProps) {
-  // Нормализуем в разумный масштаб сцены (метры почти всегда дают либо
-  // микроскопическую, либо гигантскую сцену для деталей в десятки-сотни мм).
-  const scale = 1 / 100
-  const dims = useMemo(
-    () => [lengthXMm * scale, lengthYMm * scale, lengthZMm * scale] as const,
-    [lengthXMm, lengthYMm, lengthZMm]
-  )
+  // Нормализуем по наибольшему габариту к фиксированному размеру сцены
+  // (не фиксированный делитель — детали в тестовых fixture варьируются
+  // от ~20мм до ~2300мм, единый /100 либо тонет в камере, либо не влезает).
+  const dims = useMemo(() => {
+    const maxDim = Math.max(lengthXMm, lengthYMm, lengthZMm, 1)
+    const scale = 2.4 / maxDim
+    return [lengthXMm * scale, lengthYMm * scale, lengthZMm * scale] as const
+  }, [lengthXMm, lengthYMm, lengthZMm])
 
   return (
     <Center>
@@ -44,7 +48,12 @@ function ProxyBox({ lengthXMm, lengthYMm, lengthZMm }: PartViewerProps) {
   )
 }
 
-export function PartViewer(props: PartViewerProps) {
+export function PartViewer({
+  autoRotate = false,
+  hideOverlay = false,
+  interactive = true,
+  ...props
+}: PartViewerProps) {
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden border border-border bg-dark">
       <Canvas camera={{ position: [3, 2, 3], fov: 40 }} shadows>
@@ -53,15 +62,27 @@ export function PartViewer(props: PartViewerProps) {
           <directionalLight position={[4, 6, 4]} intensity={1.2} castShadow />
           <ProxyBox {...props} />
           <Environment preset="city" />
-          <OrbitControls enablePan={false} minDistance={1.5} maxDistance={8} />
+          <OrbitControls
+            enablePan={false}
+            enableZoom={interactive}
+            enableRotate={interactive}
+            autoRotate={autoRotate}
+            autoRotateSpeed={1.4}
+            minDistance={1.5}
+            maxDistance={8}
+          />
         </Suspense>
       </Canvas>
-      <div className="absolute top-3 left-3 font-mono text-[11px] uppercase tracking-wider text-white/60">
-        {props.partName ?? 'STEP-модель'} · {props.lengthXMm}×{props.lengthYMm}×{props.lengthZMm} мм
-      </div>
-      <div className="absolute bottom-3 left-3 font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
-        параметрическая визуализация — не точная геометрия
-      </div>
+      {!hideOverlay && (
+        <>
+          <div className="absolute top-3 left-3 font-mono text-[11px] uppercase tracking-wider text-white/60">
+            {props.partName ?? 'STEP-модель'} · {props.lengthXMm}×{props.lengthYMm}×{props.lengthZMm} мм
+          </div>
+          <div className="absolute bottom-3 left-3 font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
+            параметрическая визуализация — не точная геометрия
+          </div>
+        </>
+      )}
     </div>
   )
 }
