@@ -78,8 +78,13 @@ function ProxyBox({ lengthXMm, lengthYMm, lengthZMm }: PartViewerProps) {
  * (десятки-тысячи единиц), не подогнанные под сцену заранее.
  */
 function RealMesh({ geometry }: { geometry: BufferGeometry }) {
+  // clip намеренно не используется: Bounds.clip() двигает near/far
+  // плоскости камеры к границам объекта — на деталях с крупным/несимметричным
+  // bounding box это давало видимый артефакт (часть модели/фона обрезается
+  // плоскостью отсечения при повороте). fit+observe для центрирования и
+  // масштабирования в кадр достаточно, camera near/far остаются дефолтными.
   return (
-    <Bounds fit clip observe margin={1.3}>
+    <Bounds fit observe margin={1.3}>
       <Center>
         <mesh castShadow receiveShadow geometry={geometry}>
           <meshStandardMaterial color="#7B8494" metalness={0.6} roughness={0.35} />
@@ -158,12 +163,10 @@ export function PartViewer({
           {!transparentBackground && <Environment preset="city" />}
           <OrbitControls
             enablePan={false}
-            enableZoom={interactive}
+            enableZoom={false}
             enableRotate={interactive}
             autoRotate={autoRotate}
             autoRotateSpeed={1.4}
-            minDistance={1.5}
-            maxDistance={8}
           />
         </Suspense>
       </Canvas>
