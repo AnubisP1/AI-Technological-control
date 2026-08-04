@@ -32,9 +32,9 @@ class KdReviewService:
     ) -> None:
         self._nsi_lookup = nsi_lookup
         self._template_text_generator = TemplateTextGenerator()
-        # text_generator опционален — если не передан (обычный офлайн
-        # запуск без настроенного YandexGPT API), используется только
-        # шаблонный путь, без попытки обратиться к сети.
+        # text_generator опционален — если не передан (обычный запуск без
+        # настроенного пути к локальной модели Qwen), используется только
+        # шаблонный путь.
         self._text_generator = text_generator
 
     def review(self, drawing: DrawingModel | None) -> KdReviewReport:
@@ -71,7 +71,7 @@ class KdReviewService:
         )
 
         findings = self._build_findings(material_check, blank_check, tt_checks)
-        summary = self._summarize(findings)
+        summary = self._summarize(findings, material_check, materials)
 
         return KdReviewReport(
             material_check=material_check,
@@ -81,19 +81,53 @@ class KdReviewService:
             summary=summary,
         )
 
-    def _summarize(self, findings: tuple[KdReviewFinding, ...]) -> ReviewSummary:
-        facts = {"findings": [{"severity": f.severity, "message": f.message} for f in findings]}
+    def _summarize(
+        self,
+        findings: tuple[KdReviewFinding, ...],
+        material_check,
+        known_materials: tuple,
+    ) -> ReviewSummary:
+        # candidate_materials — ВСЯ база материалов с их технологическими
+        # свойствами (плотность/прочность/твёрдость/индекс обрабатываемости),
+        # не только выбранный, — чтобы LLM могла реально сравнить и
+        # предложить аналог (Фаза 18), а не просто переформулировать один
+        # уже найденный факт. Findings остаются анти-галлюцинационным
+        # якорем: генератору запрещено выйти за пределы findings+фактов
+        # НСИ ниже (см. системный промпт QwenTextGenerator).
+        facts = {
+            "findings": [{"severity": f.severity, "message": f.message} for f in findings],
+            "matched_material": (
+                {
+                    "grade": material_check.matched_grade,
+                    "gost_standard": material_check.matched_gost,
+                }
+                if material_check is not None and material_check.matched_grade
+                else None
+            ),
+            "candidate_materials": [
+                {
+                    "grade": m.grade,
+                    "gost_standard": m.gost_standard,
+                    "density_kg_m3": m.density_kg_m3,
+                    "tensile_strength_mpa": m.tensile_strength_mpa,
+                    "hardness_hb": m.hardness_hb,
+                    "machinability_index": m.machinability_index,
+                }
+                for m in known_materials
+            ],
+        }
 
         if self._text_generator is not None:
             try:
                 generated = self._text_generator.summarize_review(facts=facts)
                 return ReviewSummary(text=generated.text, generated_by=generated.generated_by)
             except Exception:
-                # Сеть/ключ API/формат ответа — любая причина не должна
-                # ронять отчёт целиком. Откатываемся на шаблонный текст,
-                # который всегда доступен офлайн (см. QUESTIONS.md №12).
+                # Модель недоступна/не загружена/ошибка инференса — любая
+                # причина не должна ронять отчёт целиком. Откатываемся на
+                # шаблонный текст, который всегда доступен офлайн (см.
+                # QUESTIONS.md №12/№14).
                 logger.warning(
-                    "Генератор текста LLM недоступен, используется шаблонный fallback",
+                    "Локальный LLM недоступен, используется шаблонный fallback",
                     exc_info=True,
                 )
 

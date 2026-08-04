@@ -92,9 +92,9 @@ class AssistantService:
     ) -> None:
         self._db_paths = {NsiDatabase.METAL: metal_db_path, NsiDatabase.ADDITIVE: additive_db_path}
         self._template_responder = TemplateChatResponder()
-        # chat_responder опционален — без него (обычный офлайн запуск без
-        # настроенного YandexGPT API) ассистент работает целиком на
-        # шаблонном перечислении найденных фактов, без обращения к сети.
+        # chat_responder опционален — без него (обычный запуск без
+        # настроенного пути к локальной модели Qwen) ассистент работает
+        # целиком на шаблонном перечислении найденных фактов.
         self._chat_responder = chat_responder
 
     def ask(self, question: str) -> ChatReply:

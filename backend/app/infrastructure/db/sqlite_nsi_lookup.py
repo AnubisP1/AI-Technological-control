@@ -15,9 +15,19 @@ class SqliteNsiLookup:
     def find_materials(self) -> tuple[MaterialRecord, ...]:
         connection = connect(self._metal_db_path)
         try:
-            rows = connection.execute("SELECT grade, gost_standard FROM material").fetchall()
+            rows = connection.execute(
+                "SELECT grade, gost_standard, density_kg_m3, tensile_strength_mpa, "
+                "hardness_hb, machinability_index FROM material"
+            ).fetchall()
             return tuple(
-                MaterialRecord(grade=row["grade"], gost_standard=row["gost_standard"])
+                MaterialRecord(
+                    grade=row["grade"],
+                    gost_standard=row["gost_standard"],
+                    density_kg_m3=row["density_kg_m3"],
+                    tensile_strength_mpa=row["tensile_strength_mpa"],
+                    hardness_hb=row["hardness_hb"],
+                    machinability_index=row["machinability_index"],
+                )
                 for row in rows
             )
         finally:

@@ -169,3 +169,37 @@ def test_review_service_without_drawing_returns_blocking_finding():
 
     assert report.has_blocking_findings is True
     assert report.material_check is None
+
+
+def test_review_service_passes_full_material_context_to_text_generator(tmp_path: Path):
+    """Регрессия (Фаза 18): _summarize должен передавать генератору не
+    только findings, но и полный список материалов НСИ с их
+    технологическими свойствами — иначе LLM не может реально сравнить
+    материалы и предложить аналог, только переформулировать один факт."""
+    from app.infrastructure.db.nsi_db import NsiDatabase, build_database
+
+    db_path = tmp_path / "metal.sqlite"
+    build_database(NsiDatabase.METAL, db_path)
+
+    captured_facts = {}
+
+    class _CapturingTextGenerator:
+        def summarize_review(self, *, facts: dict):
+            captured_facts.update(facts)
+            from app.domain.kd_review.text_generator_port import GeneratedText
+
+            return GeneratedText(text="ok", generated_by="llm")
+
+    drawing = PdfDrawingParser().parse(_require(VAL_PDF))
+    service = KdReviewService(
+        nsi_lookup=SqliteNsiLookup(db_path), text_generator=_CapturingTextGenerator()
+    )
+    service.review(drawing)
+
+    assert captured_facts["matched_material"]["grade"] == "Сталь 45"
+    assert len(captured_facts["candidate_materials"]) >= 5
+    grades = {m["grade"] for m in captured_facts["candidate_materials"]}
+    assert "40Х" in grades
+    assert "12ХН3А" in grades
+    material_45 = next(m for m in captured_facts["candidate_materials"] if m["grade"] == "Сталь 45")
+    assert material_45["machinability_index"] == 1
