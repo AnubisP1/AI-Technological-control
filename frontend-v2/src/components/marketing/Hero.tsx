@@ -33,19 +33,26 @@ export function Hero() {
           transition={{ duration: 0.6, ease: 'easeOut' }}
           className="flex max-w-2xl flex-col gap-6"
         >
+          <img
+            src="/mai-logo.svg"
+            alt="Московский авиационный институт"
+            className="h-9 w-fit rounded-md bg-white px-2 py-1"
+          />
           <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-white/50">
             <span className="h-1.5 w-1.5 rounded-full bg-brand-soft" />
             AI-Технолог · производство БПЛА
           </div>
           <h1 className="text-4xl font-bold leading-[1.08] tracking-tight text-balance md:text-6xl">
-            От чертежа дрона до готового техпроцесса —
-            <span className="text-brand-soft"> за минуты, не дни</span>
+            От цифрового проекта до
+            <br />
+            управляемого производства
+            <span className="text-brand-soft"> — в едином контуре.</span>
           </h1>
           <p className="max-w-lg text-lg leading-relaxed text-white/60">
-            Загрузите чертёж, спецификацию или STEP-модель детали БПЛА — система сверит её
-            с базой нормативно-справочной информации, оценит технологичность и сама
-            сформирует маршрутную и операционную карту. Работает полностью локально,
-            без облака.
+            Производственный блок объединяет документацию, технологическую базу, ИИ-технолога,
+            планирование, контроль качества и диспетчеризацию. На выходе — партия готовой
+            продукции, цифровой паспорт изделия и точные данные о качестве, себестоимости, браке
+            и использовании ресурсов.
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button
