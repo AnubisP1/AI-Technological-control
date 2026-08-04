@@ -24,8 +24,8 @@ function OptionCard({ option, hero }: { option: MaterialRecommendationOption; he
       )}
     >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {hero && <Sparkles className="h-4 w-4 text-brand" />}
+        <div className="flex flex-wrap items-center gap-2">
+          {hero && <Sparkles className="h-4 w-4 shrink-0 text-brand" />}
           <span className="text-base font-semibold text-ink">
             {option.material_group_name}
           </span>

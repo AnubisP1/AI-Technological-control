@@ -22,13 +22,13 @@ function FileField({
   return (
     <label
       className={cn(
-        'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition-colors',
+        'flex min-w-0 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition-colors',
         file ? 'border-brand/40 bg-brand/[0.03]' : 'border-border bg-surface hover:border-brand/30'
       )}
     >
-      <Icon className={cn('h-5 w-5', file ? 'text-brand' : 'text-ink-dim')} />
+      <Icon className={cn('h-5 w-5 shrink-0', file ? 'text-brand' : 'text-ink-dim')} />
       <span className="text-xs font-medium text-ink">{label}</span>
-      <span className="max-w-[220px] truncate text-[11px] text-ink-dim">
+      <span className="max-w-full truncate text-[11px] text-ink-dim">
         {file ? file.name : 'нажмите, чтобы выбрать файл'}
       </span>
       <input

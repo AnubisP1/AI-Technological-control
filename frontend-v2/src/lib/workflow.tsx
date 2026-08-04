@@ -1,15 +1,38 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
+import type {
+  KdReviewReport,
+  RouteCard,
+  PrintRouteCardResponse,
+  MaterialRecommendationOption,
+} from '@/lib/api'
 
 /**
  * Входные данные, полученные на экране "Анализ детали" и нужные
- * дальше в "Производстве"/"Контроле качества" — backend не хранит
- * состояние между запросами (каждый эндпоинт принимает файлы заново),
- * поэтому сами файлы и параметры печати переносятся между экранами
- * здесь, в памяти SPA, а не через backend.
+ * дальше в "Экспертизе НСИ"/"Производстве"/"Контроле качества" —
+ * backend не хранит состояние между запросами (каждый эндпоинт
+ * принимает файлы заново), поэтому сами файлы и параметры печати
+ * переносятся между экранами здесь, в памяти SPA, а не через backend.
+ *
+ * review/routeCard (металл) и printCards (пластик) — уже ПОЛУЧЕННЫЙ на
+ * AnalysisPage результат анализа, не только входные файлы (Фаза 20, по
+ * прямому запросу пользователя: экран "Экспертиза НСИ" должен
+ * открываться с готовыми данными, не запускать повторный вызов API и
+ * не требовать отдельного нажатия "Запустить сверку" — анализ уже
+ * выполнен один раз при загрузке детали).
  */
 export type WorkflowInput =
-  | { kind: 'metal'; drawing: File }
-  | { kind: 'plastic'; stepModel: File; amTechnologyCode: string; materialGroupCode: string }
+  | { kind: 'metal'; drawing: File; review: KdReviewReport; routeCard: RouteCard }
+  | {
+      kind: 'plastic'
+      stepModel: File
+      amTechnologyCode: string
+      materialGroupCode: string
+      printCards: PrintRouteCardResponse
+      // Заполнение/число стенок/ориентация — из выбранной автоподбором
+      // рекомендации, не из printCards (та не содержит этих полей) —
+      // нужны для реестра экспертизы НСИ пластика.
+      selectedOption: MaterialRecommendationOption
+    }
 
 interface WorkflowState {
   pendingInput: WorkflowInput | null

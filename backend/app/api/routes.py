@@ -684,8 +684,12 @@ async def generate_print_route_card(
     Подбирает принтер и цепочку постобработки по правилам совместимости
     additive-НСИ, генерирует карту техпроцесса печати и карту
     постобработки по шаблонам am_document_template. Параметры печати
-    (высота слоя, время, расход материала) не рассчитываются — графы
-    остаются пустыми, не выдуманными.
+    (высота слоя, время, расход материала) рассчитываются по геометрии
+    STEP (см. PrintParameterCalculator), заполнение (infill %) —
+    справочное значение конкретной рекомендации автоподбора, не
+    пересчитывается здесь. Технологические параметры конкретной марки
+    материала (температура сопла/стола, требования к камере/хранению) —
+    в material_print_profile, для экспертизы НСИ по пластику (Фаза 20).
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         step_path = Path(tmp_dir) / (step_model.filename or "model.step")
@@ -724,10 +728,23 @@ async def generate_print_route_card(
         planning_result, columns=pp_columns
     )
 
+    profile = planning_result.material_print_profile
     return {
         "process_card": _print_process_card_to_dict(process_card),
         "postprocessing_card": _postprocessing_card_to_dict(postprocessing_card),
         "warnings": list(planning_result.warnings),
+        "material_print_profile": (
+            {
+                "trade_name": profile.trade_name,
+                "print_temp_min_c": profile.print_temp_min_c,
+                "print_temp_max_c": profile.print_temp_max_c,
+                "bed_temp_c": profile.bed_temp_c,
+                "requires_heated_chamber": profile.requires_heated_chamber,
+                "requires_dry_storage": profile.requires_dry_storage,
+            }
+            if profile
+            else None
+        ),
     }
 
 

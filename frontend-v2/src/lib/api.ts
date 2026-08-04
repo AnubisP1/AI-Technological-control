@@ -178,10 +178,20 @@ export interface PostprocessingCard {
   rows: string[][]
 }
 
+export interface MaterialPrintProfile {
+  trade_name: string
+  print_temp_min_c: number | null
+  print_temp_max_c: number | null
+  bed_temp_c: number | null
+  requires_heated_chamber: boolean
+  requires_dry_storage: boolean
+}
+
 export interface PrintRouteCardResponse {
   process_card: PrintProcessCard
   postprocessing_card: PostprocessingCard
   warnings: string[]
+  material_print_profile: MaterialPrintProfile | null
 }
 
 export async function generatePrintRouteCard(params: {

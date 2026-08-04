@@ -88,6 +88,53 @@ def test_plan_sla_quality_standard_has_tighter_tolerance_than_fdm(tmp_path: Path
     assert fdm_result.quality_standard.tolerance_mm != sla_result.quality_standard.tolerance_mm
 
 
+def test_plan_includes_material_print_profile_when_real_material_exists(tmp_path: Path):
+    """PETG (Bambu Lab PETG HF) имеет реальную запись am_material с
+    температурами — эти данные нужны для экспертизы НСИ по пластику
+    (Фаза 20), чтобы технолог знал, что установить на принтере/слайсере."""
+    service = _service(tmp_path)
+    result = service.plan(
+        part_name="Корпус датчика", am_technology_code="FDM", material_group_code="PETG"
+    )
+
+    assert result.material_print_profile is not None
+    assert result.material_print_profile.trade_name == "Bambu Lab PETG HF"
+    assert result.material_print_profile.print_temp_min_c == 230
+    assert result.material_print_profile.print_temp_max_c == 260
+    assert result.material_print_profile.bed_temp_c == 80
+    assert result.material_print_profile.requires_dry_storage is True
+    assert not result.warnings
+
+
+def test_plan_includes_material_print_profile_for_nylon_added_2026_08_04(tmp_path: Path):
+    """Регрессия: группа NYLON_FDM изначально не имела ни одной записи
+    am_material (см. seed_data.sql) — автоподбор рекомендовал её как
+    топ-вариант для класса PROPELLER, но экспертиза НСИ не могла
+    показать параметры печати. Добавлена реальная марка (eSUN PA-CF)."""
+    service = _service(tmp_path)
+    result = service.plan(
+        part_name="Пропеллер", am_technology_code="FDM", material_group_code="NYLON_FDM"
+    )
+
+    assert result.material_print_profile is not None
+    assert result.material_print_profile.trade_name == "eSUN PA-CF"
+    assert result.material_print_profile.requires_heated_chamber is True
+    assert result.material_print_profile.requires_dry_storage is True
+    assert not result.warnings
+
+
+def test_plan_warns_when_material_group_has_no_am_material_record(tmp_path: Path):
+    """Если бы группа материала реально осталась без записи am_material,
+    сервис обязан честно предупредить, а не молчать/выдумывать значения."""
+    service = _service(tmp_path)
+    result = service.plan(
+        part_name="Деталь", am_technology_code="FDM", material_group_code="TPU"
+    )
+
+    assert result.material_print_profile is None
+    assert any("параметры печати" in w for w in result.warnings)
+
+
 def test_plan_attaches_quality_effect_note_to_postprocessing_step_with_known_tooling(
     tmp_path: Path,
 ):

@@ -8,6 +8,7 @@ from pathlib import Path
 from app.domain.process_planning.print_planning_lookup_port import (
     AmMaterialGroupRecord,
     MaterialDensityRecord,
+    MaterialPrintProfileRecord,
     MaterialRecommendationRow,
     OperatingConditionRecord,
     PartApplicationClassRecord,
@@ -353,6 +354,32 @@ class SqlitePrintPlanningLookup:
             if row is None:
                 return None
             return MaterialDensityRecord(density_g_cm3=row["density_g_cm3"])
+        finally:
+            connection.close()
+
+    def find_material_print_profile(
+        self, am_material_group_id: int
+    ) -> MaterialPrintProfileRecord | None:
+        # Тот же принцип 1:1 группа->марка, что find_material_density —
+        # см. её комментарий.
+        connection = connect(self._additive_db_path)
+        try:
+            row = connection.execute(
+                "SELECT trade_name, print_temp_min_c, print_temp_max_c, bed_temp_c, "
+                "requires_heated_chamber, requires_dry_storage FROM am_material "
+                "WHERE am_material_group_id = ? LIMIT 1",
+                (am_material_group_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return MaterialPrintProfileRecord(
+                trade_name=row["trade_name"],
+                print_temp_min_c=row["print_temp_min_c"],
+                print_temp_max_c=row["print_temp_max_c"],
+                bed_temp_c=row["bed_temp_c"],
+                requires_heated_chamber=bool(row["requires_heated_chamber"]),
+                requires_dry_storage=bool(row["requires_dry_storage"]),
+            )
         finally:
             connection.close()
 

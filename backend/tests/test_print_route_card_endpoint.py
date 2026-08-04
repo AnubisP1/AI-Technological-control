@@ -42,6 +42,13 @@ def test_print_route_card_endpoint_generates_process_and_postprocessing_cards():
     assert quality_standard is not None
     assert quality_standard["tolerance_mm"].startswith("±")
     assert "inner.su" in quality_standard["source_note"]
+    # material_print_profile (Фаза 20, экспертиза НСИ по пластику) —
+    # температуры печати смолы не заполнены (не FDM-филамент), но марка
+    # и требования к хранению/камере должны прийти.
+    profile = body["material_print_profile"]
+    assert profile is not None
+    assert profile["trade_name"] == "Formlabs Tough 2000 Resin"
+    assert profile["print_temp_min_c"] is None
 
 
 def test_print_route_card_endpoint_reports_warning_for_unknown_material():

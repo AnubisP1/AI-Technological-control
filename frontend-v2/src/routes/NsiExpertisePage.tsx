@@ -1,24 +1,23 @@
 import { useMemo, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, FileText, Search, ClipboardCheck } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, Search, ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/marketing/Section'
 import { PageBackdrop } from '@/components/PageBackdrop'
 import { ApprovalDialog } from '@/components/production/ApprovalDialog'
-import { useWorkflow } from '@/lib/workflow'
-import { reviewKd, generateRouteCard, type KdReviewReport, type RouteCard, type MatchStatus } from '@/lib/api'
+import { useWorkflow, type WorkflowInput } from '@/lib/workflow'
+import type { KdReviewReport, RouteCard, MatchStatus, PrintRouteCardResponse, MaterialRecommendationOption } from '@/lib/api'
 
 /**
- * Экран "Экспертиза соответствия НСИ" (Фаза 17, часть 2) — по образцу
- * пользовательских референсов (UI UX reference/Снимок экрана
- * 2026-08-02 в 16.18.56.png): карточки статистики соответствия +
- * фильтруемый реестр требований. В отличие от референса (экспертиза
- * проектной документации нефтепровода по ГОСТ 34182-2017), здесь
- * реестр строится из реального KdReviewReport (Модуль 1.2) — сверка
- * материала/заготовки/технических требований чертежа с БД НСИ этого
- * проекта, а не выдуманные строки "для вида".
+ * Экран "Экспертиза соответствия НСИ" (Фаза 17, часть 2; Фаза 20 —
+ * реестр для пластика + чтение уже готового результата анализа).
+ *
+ * Данные больше не запрашиваются повторно на этом экране — и для
+ * металла (KdReviewReport/RouteCard), и для пластика (PrintRouteCardResponse
+ * + выбранная рекомендация автоподбора) экран читает уже полученный на
+ * "Анализ детали" результат из WorkflowProvider (см. lib/workflow.tsx).
+ * Анализ выполняется один раз, не дважды.
  */
 
 type RegistryStatus = 'ok' | 'not_ok' | 'partial' | 'unchecked'
@@ -45,10 +44,10 @@ const MATCH_TO_REGISTRY: Record<MatchStatus, RegistryStatus> = {
   not_found: 'not_ok',
 }
 
-function buildRegistryRows(review: KdReviewReport | null, routeCard: RouteCard | null): RegistryRow[] {
+function buildMetalRegistryRows(review: KdReviewReport, routeCard: RouteCard): RegistryRow[] {
   const rows: RegistryRow[] = []
 
-  if (review?.material_check) {
+  if (review.material_check) {
     const mc = review.material_check
     rows.push({
       id: 'material',
@@ -60,7 +59,7 @@ function buildRegistryRows(review: KdReviewReport | null, routeCard: RouteCard |
     })
   }
 
-  if (review?.blank_check) {
+  if (review.blank_check) {
     const bc = review.blank_check
     rows.push({
       id: 'blank',
@@ -72,7 +71,7 @@ function buildRegistryRows(review: KdReviewReport | null, routeCard: RouteCard |
     })
   }
 
-  review?.technical_requirement_checks.forEach((tt) => {
+  review.technical_requirement_checks.forEach((tt) => {
     rows.push({
       id: `tt-${tt.number}`,
       registry: 'Технические требования',
@@ -83,7 +82,7 @@ function buildRegistryRows(review: KdReviewReport | null, routeCard: RouteCard |
     })
   })
 
-  routeCard?.rows.forEach((row, i) => {
+  routeCard.rows.forEach((row, i) => {
     const [opNo, opName, , , , , equipment] = row
     rows.push({
       id: `op-${opNo}-${i}`,
@@ -101,6 +100,126 @@ function buildRegistryRows(review: KdReviewReport | null, routeCard: RouteCard |
   return rows
 }
 
+function buildPlasticRegistryRows(
+  printCards: PrintRouteCardResponse,
+  selectedOption: MaterialRecommendationOption
+): RegistryRow[] {
+  const rows: RegistryRow[] = []
+  const profile = printCards.material_print_profile
+
+  rows.push({
+    id: 'material-recommendation',
+    registry: 'НСИ · Автоподбор материала',
+    requirement: 'Для класса применения детали должна быть рекомендация материала в справочнике НСИ',
+    projectDoc: `${selectedOption.material_group_name} · ${selectedOption.am_technology_name}`,
+    status: 'ok',
+    note: `${selectedOption.source_title} (${selectedOption.source_reliability === 'high' ? 'высокая' : selectedOption.source_reliability === 'medium' ? 'средняя' : 'низкая'} надёжность источника)`,
+  })
+
+  rows.push({
+    id: 'printer',
+    registry: 'НСИ · Оборудование',
+    requirement: 'Для подобранного материала должна быть подобрана модель принтера из справочника',
+    projectDoc: printCards.process_card.row[1] || '—',
+    status: printCards.process_card.row[1] && printCards.process_card.row[1] !== 'не подобран' ? 'ok' : 'not_ok',
+    note:
+      printCards.process_card.row[1] && printCards.process_card.row[1] !== 'не подобран'
+        ? '—'
+        : 'подходящая модель принтера не найдена в справочнике по текущим правилам совместимости',
+  })
+
+  if (profile) {
+    const tempNote =
+      profile.print_temp_min_c != null && profile.print_temp_max_c != null
+        ? `сопло ${profile.print_temp_min_c}–${profile.print_temp_max_c}°C${profile.bed_temp_c != null ? `, стол ${profile.bed_temp_c}°C` : ''}`
+        : 'температурный режим не применим для этого типа технологии (не FDM-филамент)'
+    rows.push({
+      id: 'print-temperature',
+      registry: 'НСИ · Параметры печати',
+      requirement: 'Температурный режим печати конкретной марки материала (для установки на принтере/слайсере)',
+      projectDoc: profile.trade_name,
+      status: 'ok',
+      note: tempNote,
+    })
+
+    if (profile.requires_heated_chamber || profile.requires_dry_storage) {
+      const requirements = [
+        profile.requires_heated_chamber && 'подогреваемая камера печати',
+        profile.requires_dry_storage && 'сухое хранение материала (гигроскопичен)',
+      ]
+        .filter(Boolean)
+        .join('; ')
+      rows.push({
+        id: 'print-requirements',
+        registry: 'НСИ · Параметры печати',
+        requirement: 'Особые требования к оборудованию/хранению материала',
+        projectDoc: profile.trade_name,
+        status: 'partial',
+        note: requirements,
+      })
+    }
+  } else {
+    rows.push({
+      id: 'print-temperature',
+      registry: 'НСИ · Параметры печати',
+      requirement: 'Температурный режим печати конкретной марки материала',
+      projectDoc: selectedOption.material_group_name,
+      status: 'not_ok',
+      note: 'В справочнике НСИ нет конкретной марки материала для этой группы — параметры печати не могут быть указаны',
+    })
+  }
+
+  if (selectedOption.min_infill_percent != null || selectedOption.recommended_wall_count != null) {
+    rows.push({
+      id: 'infill',
+      registry: 'НСИ · Параметры печати',
+      requirement: 'Заполнение и число стенок по рекомендации для класса применения детали',
+      projectDoc: selectedOption.material_group_name,
+      status: 'ok',
+      note: [
+        selectedOption.min_infill_percent != null ? `мин. заполнение ${selectedOption.min_infill_percent}%` : null,
+        selectedOption.recommended_wall_count != null ? `стенок: ${selectedOption.recommended_wall_count}` : null,
+        selectedOption.orientation_note,
+      ]
+        .filter(Boolean)
+        .join('; '),
+    })
+  }
+
+  const qs = printCards.process_card.quality_standard
+  if (qs) {
+    rows.push({
+      id: 'quality-standard',
+      registry: 'НСИ · Допуски технологии',
+      requirement: 'Допуски и шероховатость поверхности по технологии печати',
+      projectDoc: `допуск ${qs.tolerance_mm}, мин. толщина стенки ${qs.min_wall_thickness_mm} мм`,
+      status: 'ok',
+      note: qs.source_note,
+    })
+  }
+
+  printCards.warnings.forEach((w, i) => {
+    rows.push({
+      id: `warning-${i}`,
+      registry: 'НСИ · Замечания автоподбора',
+      requirement: 'Автоподбор техпроцесса печати не должен давать замечаний',
+      projectDoc: '—',
+      status: 'not_ok',
+      note: w,
+    })
+  })
+
+  return rows
+}
+
+function buildRegistryRows(pendingInput: WorkflowInput | null): RegistryRow[] {
+  if (!pendingInput) return []
+  if (pendingInput.kind === 'metal') {
+    return buildMetalRegistryRows(pendingInput.review, pendingInput.routeCard)
+  }
+  return buildPlasticRegistryRows(pendingInput.printCards, pendingInput.selectedOption)
+}
+
 function StatCard({ label, count, total, className }: { label: string; count: number; total: number; className: string }) {
   const percent = total > 0 ? Math.round((count / total) * 100) : 0
   return (
@@ -115,8 +234,6 @@ function StatCard({ label, count, total, className }: { label: string; count: nu
 export function NsiExpertisePage() {
   const navigate = useNavigate()
   const { pendingInput, acknowledgeNsiExpertise, markApproved } = useWorkflow()
-  const [review, setReview] = useState<KdReviewReport | null>(null)
-  const [routeCard, setRouteCard] = useState<RouteCard | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<RegistryStatus | 'all'>('all')
   const [registryFilter, setRegistryFilter] = useState<string | 'all'>('all')
@@ -128,21 +245,7 @@ export function NsiExpertisePage() {
     navigate('/app/production')
   }
 
-  const drawing = pendingInput?.kind === 'metal' ? pendingInput.drawing : null
-
-  const runMutation = useMutation({
-    mutationFn: async () => {
-      if (!drawing) throw new Error('Нет загруженного чертежа — сначала выполните анализ детали (металл)')
-      const [reviewResult, routeCardResult] = await Promise.all([
-        reviewKd({ drawing }),
-        generateRouteCard({ drawing }),
-      ])
-      setReview(reviewResult)
-      setRouteCard(routeCardResult)
-    },
-  })
-
-  const rows = useMemo(() => buildRegistryRows(review, routeCard), [review, routeCard])
+  const rows = useMemo(() => buildRegistryRows(pendingInput), [pendingInput])
   const registries = useMemo(() => Array.from(new Set(rows.map((r) => r.registry))), [rows])
 
   const filteredRows = useMemo(() => {
@@ -168,50 +271,19 @@ export function NsiExpertisePage() {
   return (
     <Container className="max-w-6xl py-10">
       <PageBackdrop compact />
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Экспертиза соответствия НСИ</h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-dim">
-            Проверка материала, заготовки, технических требований и подобранного оборудования детали
-            по базе нормативно-справочной информации проекта — те же данные, что и в отчёте Модуля 1.2 и
-            маршрутной карте, представленные как реестр требований с фильтрами.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          disabled={!drawing || runMutation.isPending}
-          onClick={() => runMutation.mutate()}
-        >
-          <FileText className="h-3.5 w-3.5" />
-          {runMutation.isPending ? 'Сверка…' : 'Запустить сверку'}
-        </Button>
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Экспертиза соответствия НСИ</h1>
+        <p className="mt-1 max-w-2xl text-sm text-ink-dim">
+          {pendingInput?.kind === 'plastic'
+            ? 'Проверка подобранного автоподбором материала, технологии печати, температурного режима и допусков по базе нормативно-справочной информации проекта.'
+            : 'Проверка материала, заготовки, технических требований и подобранного оборудования детали по базе нормативно-справочной информации проекта — те же данные, что и в отчёте Модуля 1.2 и маршрутной карте, представленные как реестр требований с фильтрами.'}
+        </p>
       </div>
 
-      {!pendingInput && !hasData && (
+      {!pendingInput && (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Деталь не загружена. Сначала пройдите «Анализ детали», затем вернитесь сюда и нажмите
-          «Запустить сверку».
-        </div>
-      )}
-
-      {pendingInput?.kind === 'plastic' && (
-        <div className="mb-6 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-ink-dim">
-          Экспертиза соответствия НСИ сверяет чертёж с базой материалов и заготовок — для пластиковых
-          деталей входных данных является только STEP-модель, без чертежа, поэтому этот шаг к ним не
-          применяется. Материал для печати уже подобран автоподбором на экране «Анализ детали». Можно
-          сразу переходить к согласованию.
-          <div className="mt-3">
-            <Button size="sm" onClick={() => setApprovalDialogOpen(true)}>
-              <ClipboardCheck className="h-3.5 w-3.5" />
-              Перейти к согласованию
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {runMutation.isError && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {(runMutation.error as Error).message}
+          Деталь не загружена. Сначала пройдите «Анализ детали» — результат экспертизы появится здесь
+          автоматически.
         </div>
       )}
 

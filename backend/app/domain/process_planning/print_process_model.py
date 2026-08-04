@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.domain.process_planning.print_planning_lookup_port import MaterialPrintProfileRecord
+
 
 @dataclass(frozen=True)
 class PlannedPostprocessingStep:
@@ -59,6 +61,11 @@ class PrintProcessPlanningResult:
     warnings: tuple[str, ...] = field(default_factory=tuple)
     quality_standard: PrintQualityStandard | None = None
     print_estimate: PrintEstimate | None = None
+    # Технологические параметры конкретной марки материала (Фаза 20,
+    # экспертиза НСИ для пластика) — температура сопла/стола и требования
+    # к камере/хранению, откуда технолог узнаёт, что установить на
+    # принтере/слайсере под подобранный автоподбором материал.
+    material_print_profile: MaterialPrintProfileRecord | None = None
 
     @property
     def is_empty(self) -> bool:

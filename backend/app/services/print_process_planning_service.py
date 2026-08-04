@@ -111,6 +111,13 @@ class PrintProcessPlanningService:
             am_material_group_id=material_group.id,
             bounding_box=bounding_box,
         )
+        material_print_profile = self._lookup.find_material_print_profile(material_group.id)
+        if material_print_profile is None:
+            warnings.append(
+                f"В справочнике НСИ нет конкретной марки материала для группы "
+                f"'{material_group.name}' — параметры печати (температура/требования "
+                "к камере) не могут быть указаны, требуется пополнить справочник."
+            )
 
         return PrintProcessPlanningResult(
             part_name=part_name,
@@ -121,6 +128,7 @@ class PrintProcessPlanningService:
             warnings=tuple(warnings),
             quality_standard=quality_standard,
             print_estimate=print_estimate,
+            material_print_profile=material_print_profile,
         )
 
     def _build_quality_standard(self, am_technology_id: int) -> PrintQualityStandard | None:

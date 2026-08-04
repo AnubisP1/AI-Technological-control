@@ -97,7 +97,7 @@ export function AnalysisPage() {
         setReview(reviewResult)
         const card = await generateRouteCard({ drawing })
         setRouteCard(card)
-        setPendingInput({ kind: 'metal', drawing })
+        setPendingInput({ kind: 'metal', drawing, review: reviewResult, routeCard: card })
       } else {
         if (!stepModel || !selectedOption) throw new Error('Не выбрана модель или материал')
         const analysisResult = await analyzeKd({ stepModel })
@@ -113,6 +113,8 @@ export function AnalysisPage() {
           stepModel,
           amTechnologyCode: selectedOption.am_technology_code,
           materialGroupCode: selectedOption.material_group_code,
+          printCards: card,
+          selectedOption,
         })
       }
     },
@@ -184,18 +186,6 @@ export function AnalysisPage() {
             onAnalyze={() => analyzeMutation.mutate()}
           />
 
-          {materialKind === 'plastic' && (
-            <div className="rounded-2xl border border-border bg-surface p-6">
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-ink-dim">
-                Автоподбор материала
-              </h2>
-              <MaterialRecommendation
-                partApplicationClassCode={partApplicationClassCode}
-                onSelect={setSelectedOption}
-              />
-            </div>
-          )}
-
           {boundingBox && (
             <div className="h-[280px]">
               <PartViewer
@@ -216,6 +206,15 @@ export function AnalysisPage() {
         </div>
 
         <div className="flex min-w-0 flex-col gap-6">
+          {materialKind === 'plastic' && (
+            <Card title="Автоподбор материала">
+              <MaterialRecommendation
+                partApplicationClassCode={partApplicationClassCode}
+                onSelect={setSelectedOption}
+              />
+            </Card>
+          )}
+
           {analysis && (
             <Card title="Результат распознавания КД">
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
@@ -470,7 +469,7 @@ export function AnalysisPage() {
             </Card>
           )}
 
-          {!analysis && !review && !routeCard && !printCards && (
+          {!analysis && !review && !routeCard && !printCards && materialKind === 'metal' && (
             <div className="flex min-h-[300px] items-center justify-center rounded-2xl border border-dashed border-border text-sm text-ink-dim">
               Результат анализа появится здесь
             </div>

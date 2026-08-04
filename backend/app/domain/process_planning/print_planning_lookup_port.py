@@ -90,6 +90,22 @@ class MaterialDensityRecord:
 
 
 @dataclass(frozen=True)
+class MaterialPrintProfileRecord:
+    """Технологические параметры конкретной марки материала печати
+    (am_material) — для экспертизы НСИ по пластику (Фаза 20): температура
+    сопла/стола нужна для FDM/FFF-филамента (NULL для смол/порошка, где
+    печать не термическая в этом смысле), требования к камере/хранению
+    определяют дополнительные пункты контроля техпроцесса."""
+
+    trade_name: str
+    print_temp_min_c: float | None
+    print_temp_max_c: float | None
+    bed_temp_c: float | None
+    requires_heated_chamber: bool
+    requires_dry_storage: bool
+
+
+@dataclass(frozen=True)
 class PrintSpeedReferenceRecord:
     volumetric_rate_mm3_s: float
     source: str
@@ -144,3 +160,6 @@ class IPrintPlanningLookup(Protocol):
     def find_print_speed_reference(
         self, am_technology_id: int
     ) -> PrintSpeedReferenceRecord | None: ...
+    def find_material_print_profile(
+        self, am_material_group_id: int
+    ) -> MaterialPrintProfileRecord | None: ...
