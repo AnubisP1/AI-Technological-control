@@ -111,7 +111,12 @@ class KdReviewService:
                     "density_kg_m3": m.density_kg_m3,
                     "tensile_strength_mpa": m.tensile_strength_mpa,
                     "hardness_hb": m.hardness_hb,
+                    "hardness_hrc": m.hardness_hrc,
+                    "red_hardness_c": m.red_hardness_c,
                     "machinability_index": m.machinability_index,
+                    "chemical_composition": m.chemical_composition,
+                    "heat_treatment": m.heat_treatment,
+                    "application": m.application,
                 }
                 for m in known_materials
             ],

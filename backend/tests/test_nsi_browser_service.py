@@ -22,7 +22,7 @@ def test_list_tables_returns_real_tables_with_row_counts(tmp_path: Path):
     assert "sqlite_sequence" not in names  # служебная таблица SQLite, не часть НСИ
 
     material_table = next(t for t in tables if t.name == "material")
-    assert material_table.row_count == 6  # 5 исходных + 12ХН3А (Фаза 17, часть 5)
+    assert material_table.row_count == 21  # расширенный справочник марок сталей (2026-08-04)
 
 
 def test_table_content_returns_real_seed_rows(tmp_path: Path):
@@ -31,11 +31,13 @@ def test_table_content_returns_real_seed_rows(tmp_path: Path):
 
     assert content is not None
     assert "grade" in content.columns
-    assert content.total_row_count == 6
+    assert content.total_row_count == 21
     assert content.truncated is False
     grades = [row[content.columns.index("grade")] for row in content.rows]
     assert "Сталь 45" in grades
     assert "12ХН3А" in grades
+    assert "Р18" in grades
+    assert "65Г" in grades
 
 
 def test_table_content_returns_none_for_unknown_table(tmp_path: Path):

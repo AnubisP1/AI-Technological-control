@@ -62,7 +62,11 @@ _STOPWORDS = frozenset(
 
 # (таблица, колонки для LIKE-поиска, колонки для строки-описания результата)
 _METAL_SEARCH_TARGETS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
-    ("material", ("grade", "gost_standard", "description"), ("grade", "gost_standard", "description")),
+    (
+        "material",
+        ("grade", "gost_standard", "description", "application", "chemical_composition"),
+        ("grade", "gost_standard", "application", "machinability_index"),
+    ),
     ("equipment_model", ("model_name", "control_system", "description"), ("model_name", "control_system", "description")),
     ("tooling", ("designation", "gost_standard", "material", "description"), ("designation", "material", "description")),
     ("operation_type", ("code", "name", "gost_code", "description"), ("code", "name", "description")),

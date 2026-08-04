@@ -21,6 +21,16 @@ class MaterialRecord:
     tensile_strength_mpa: float | None = None
     hardness_hb: float | None = None
     machinability_index: float | None = None
+    # Расширенный справочник марок сталей (2026-08-04) — твёрдость по
+    # Роквеллу и красностойкость нужны для инструментальных/быстрорежущих/
+    # подшипниковых сталей, где HB не применяется (закалка на высокую
+    # твёрдость); химсостав/термообработка/применение дают LLM реальный
+    # материал для сравнения марок, а не только 4 числа.
+    hardness_hrc: float | None = None
+    red_hardness_c: float | None = None
+    chemical_composition: str | None = None
+    heat_treatment: str | None = None
+    application: str | None = None
 
 
 @dataclass(frozen=True)

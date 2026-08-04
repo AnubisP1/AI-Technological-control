@@ -17,7 +17,8 @@ class SqliteNsiLookup:
         try:
             rows = connection.execute(
                 "SELECT grade, gost_standard, density_kg_m3, tensile_strength_mpa, "
-                "hardness_hb, machinability_index FROM material"
+                "hardness_hb, machinability_index, hardness_hrc, red_hardness_c, "
+                "chemical_composition, heat_treatment, application FROM material"
             ).fetchall()
             return tuple(
                 MaterialRecord(
@@ -27,6 +28,11 @@ class SqliteNsiLookup:
                     tensile_strength_mpa=row["tensile_strength_mpa"],
                     hardness_hb=row["hardness_hb"],
                     machinability_index=row["machinability_index"],
+                    hardness_hrc=row["hardness_hrc"],
+                    red_hardness_c=row["red_hardness_c"],
+                    chemical_composition=row["chemical_composition"],
+                    heat_treatment=row["heat_treatment"],
+                    application=row["application"],
                 )
                 for row in rows
             )
