@@ -12,6 +12,15 @@ from typing import Protocol
 class MaterialRecord:
     grade: str
     gost_standard: str | None
+    # Технологические свойства (Фаза 18 — нужны LLM для реальной аналитики
+    # технологичности "материал X обрабатывается хуже, вот аналог с лучшей
+    # обрабатываемостью", а не только для сверки марка+ГОСТ). Опциональны
+    # с дефолтом None, чтобы не ломать существующие вызовы с моковыми
+    # записями в тестах, где эти поля не нужны.
+    density_kg_m3: float | None = None
+    tensile_strength_mpa: float | None = None
+    hardness_hb: float | None = None
+    machinability_index: float | None = None
 
 
 @dataclass(frozen=True)
