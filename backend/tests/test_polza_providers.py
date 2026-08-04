@@ -8,6 +8,7 @@ from app.infrastructure.llm.polza_chat_responder import PolzaApiError as PolzaCh
 from app.infrastructure.llm.polza_chat_responder import PolzaChatResponder
 from app.infrastructure.llm.polza_text_generator import PolzaApiError as PolzaTextApiError
 from app.infrastructure.llm.polza_text_generator import PolzaTextGenerator
+from app.infrastructure.llm.polza_web_search_chat_responder import PolzaWebSearchChatResponder
 
 
 def _mock_urlopen_response(payload: dict):
@@ -102,3 +103,42 @@ def test_polza_chat_responder_sends_configured_model_in_request_body():
     sent_request: urllib.request.Request = mock_urlopen.call_args[0][0]
     sent_body = json.loads(sent_request.data.decode("utf-8"))
     assert sent_body["model"] == "deepseek/deepseek-v4-flash-0731"
+
+
+def test_polza_web_search_responder_parses_successful_response():
+    responder = PolzaWebSearchChatResponder(api_key="test-key", model="test-model")
+    fake_response = {"choices": [{"message": {"content": "Париж основан в III веке до н.э."}}]}
+
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen_response(fake_response)):
+        result = responder.reply(question="Когда основан Париж?", context_facts={"matches": []})
+
+    assert result.generated_by == "llm"
+    assert result.text == "Париж основан в III веке до н.э."
+
+
+def test_polza_web_search_responder_enables_web_plugin_in_request_body():
+    """Регрессия: без plugins:[{id:"web"}] в теле запроса Polza.ai не
+    включает веб-поиск — это единственное отличие тела запроса от
+    обычного PolzaChatResponder (см. dev/QUESTIONS.md №18)."""
+    responder = PolzaWebSearchChatResponder(api_key="test-key", model="openai/gpt-5.6-luna")
+    fake_response = {"choices": [{"message": {"content": "ok"}}]}
+
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen_response(fake_response)) as mock_urlopen:
+        responder.reply(question="вопрос", context_facts={"matches": []})
+
+    sent_request: urllib.request.Request = mock_urlopen.call_args[0][0]
+    sent_body = json.loads(sent_request.data.decode("utf-8"))
+    assert sent_body["plugins"] == [{"id": "web"}]
+    assert sent_body["model"] == "openai/gpt-5.6-luna"
+
+
+def test_polza_web_search_responder_raises_on_network_error():
+    import urllib.error
+
+    from app.infrastructure.llm.polza_web_search_chat_responder import PolzaApiError as PolzaWebApiError
+
+    responder = PolzaWebSearchChatResponder(api_key="test-key", model="test-model")
+
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("нет сети")):
+        with pytest.raises(PolzaWebApiError):
+            responder.reply(question="вопрос", context_facts={"matches": []})

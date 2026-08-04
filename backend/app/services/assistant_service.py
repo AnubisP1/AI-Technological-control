@@ -9,6 +9,12 @@
 через IChatResponder, с тем же принципом, что и KdReviewService._summarize:
 LLM пробуется первой, любая ошибка откатывается на офлайн-шаблон, чтобы
 чат оставался рабочим без сети (см. dev/QUESTIONS.md №12).
+
+Веб-поиск (Фаза 21, dev/QUESTIONS.md №18) — отдельный, более слабый по
+достоверности источник, используется ТОЛЬКО когда keyword-поиск по НСИ
+не нашёл вообще ничего (matches пуст) — не встроен в общую цепочку
+chat_responder, чтобы модель не могла предпочесть интернет реальным
+данным локальной базы, когда они уже есть в контексте.
 """
 
 from __future__ import annotations
@@ -93,6 +99,7 @@ class AssistantService:
         metal_db_path: Path,
         additive_db_path: Path,
         chat_responder: IChatResponder | None = None,
+        web_search_responder: IChatResponder | None = None,
     ) -> None:
         self._db_paths = {NsiDatabase.METAL: metal_db_path, NsiDatabase.ADDITIVE: additive_db_path}
         self._template_responder = TemplateChatResponder()
@@ -100,6 +107,10 @@ class AssistantService:
         # настроенного пути к локальной модели Qwen) ассистент работает
         # целиком на шаблонном перечислении найденных фактов.
         self._chat_responder = chat_responder
+        # web_search_responder опционален и используется отдельно от
+        # chat_responder — только если keyword-поиск по НСИ не нашёл
+        # вообще ничего (см. ask()), не как часть общей цепочки.
+        self._web_search_responder = web_search_responder
 
     def ask(self, question: str) -> ChatReply:
         matches = self._search(question)
@@ -114,6 +125,20 @@ class AssistantService:
                 # всегда доступен офлайн (тот же принцип, что KdReviewService).
                 logger.warning(
                     "Чат-ассистент LLM недоступен, используется шаблонный fallback",
+                    exc_info=True,
+                )
+
+        # Веб-поиск — только если в НСИ вообще ничего не нашлось (matches
+        # пуст). Если matches непустой, но chat_responder упал с ошибкой
+        # выше — это сетевой/провайдерский сбой, а не отсутствие данных в
+        # НСИ, веб-поиск здесь не поможет и не должен подменять реальные
+        # найденные факты интернет-источником.
+        if not matches and self._web_search_responder is not None:
+            try:
+                return self._web_search_responder.reply(question=question, context_facts=context_facts)
+            except Exception:
+                logger.warning(
+                    "Веб-поиск через Polza.ai недоступен, используется шаблонный fallback",
                     exc_info=True,
                 )
 

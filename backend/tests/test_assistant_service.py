@@ -7,12 +7,17 @@ from app.infrastructure.db.nsi_db import NsiDatabase, build_database
 from app.services.assistant_service import AssistantService
 
 
-def _service(tmp_path: Path, chat_responder=None) -> AssistantService:
+def _service(tmp_path: Path, chat_responder=None, web_search_responder=None) -> AssistantService:
     metal_path = tmp_path / "metal.sqlite"
     additive_path = tmp_path / "additive.sqlite"
     build_database(NsiDatabase.METAL, metal_path)
     build_database(NsiDatabase.ADDITIVE, additive_path)
-    return AssistantService(metal_path, additive_path, chat_responder=chat_responder)
+    return AssistantService(
+        metal_path,
+        additive_path,
+        chat_responder=chat_responder,
+        web_search_responder=web_search_responder,
+    )
 
 
 def test_ask_finds_real_material_and_falls_back_to_template(tmp_path: Path):
@@ -78,6 +83,53 @@ def test_ask_finds_matches_for_inflected_russian_word_forms(tmp_path: Path):
     assert reply2.generated_by == "template"
     assert "не найдено" not in reply2.text.lower()
     assert "PROPELLER" in reply2.text
+
+
+def test_ask_uses_web_search_when_nsi_finds_nothing(tmp_path: Path):
+    """Фаза 21, dev/QUESTIONS.md №18: если keyword-поиск по НСИ не нашёл
+    вообще ничего (matches пуст), ассистент обязан попробовать
+    web_search_responder перед откатом на шаблон "не найдено"."""
+
+    class _StubWebSearchResponder:
+        def reply(self, *, question: str, context_facts: dict) -> ChatReply:
+            assert context_facts["matches"] == []
+            return ChatReply(text="ответ из интернета", generated_by="llm")
+
+    service = _service(tmp_path, web_search_responder=_StubWebSearchResponder())
+    reply = service.ask("зюзюкин Ы-9000 кварзоплетень")
+
+    assert reply == ChatReply(text="ответ из интернета", generated_by="llm")
+
+
+def test_ask_does_not_use_web_search_when_nsi_finds_matches(tmp_path: Path):
+    """Веб-поиск не должен подменять реальные найденные факты НСИ, даже
+    если основной chat_responder не настроен (только шаблон) — это
+    предотвращает ситуацию, когда модель предпочла бы интернет уже
+    найденным локальным данным."""
+
+    class _WebSearchResponderThatShouldNotBeCalled:
+        def reply(self, *, question: str, context_facts: dict) -> ChatReply:
+            raise AssertionError("веб-поиск не должен вызываться, когда НСИ нашла совпадения")
+
+    service = _service(
+        tmp_path, web_search_responder=_WebSearchResponderThatShouldNotBeCalled()
+    )
+    reply = service.ask("Сталь 45")
+
+    assert reply.generated_by == "template"
+    assert "Сталь 45" in reply.text
+
+
+def test_ask_falls_back_to_template_when_web_search_raises(tmp_path: Path):
+    class _FailingWebSearchResponder:
+        def reply(self, *, question: str, context_facts: dict) -> ChatReply:
+            raise RuntimeError("Polza.ai недоступна")
+
+    service = _service(tmp_path, web_search_responder=_FailingWebSearchResponder())
+    reply = service.ask("зюзюкин Ы-9000 кварзоплетень")
+
+    assert reply.generated_by == "template"
+    assert "не найдено" in reply.text.lower()
 
 
 def test_search_table_query_is_not_vulnerable_to_sql_injection_via_question(tmp_path: Path):

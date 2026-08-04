@@ -30,6 +30,7 @@ from app.infrastructure.llm.chained_chat_responder import ChainedChatResponder
 from app.infrastructure.llm.chained_text_generator import ChainedTextGenerator
 from app.infrastructure.llm.polza_chat_responder import PolzaChatResponder
 from app.infrastructure.llm.polza_text_generator import PolzaTextGenerator
+from app.infrastructure.llm.polza_web_search_chat_responder import PolzaWebSearchChatResponder
 from app.infrastructure.llm.qwen_chat_responder import QwenChatResponder
 from app.infrastructure.llm.qwen_text_generator import QwenTextGenerator
 from app.infrastructure.quality_control.opencv_photo_comparator import OpenCvPhotoComparator
@@ -138,7 +139,10 @@ class ChatQuestion(BaseModel):
 
 def _get_assistant_service() -> AssistantService:
     return AssistantService(
-        _get_metal_db_path(), _get_additive_db_path(), chat_responder=_build_chat_responder()
+        _get_metal_db_path(),
+        _get_additive_db_path(),
+        chat_responder=_build_chat_responder(),
+        web_search_responder=_build_web_search_responder(),
     )
 
 
@@ -285,6 +289,21 @@ def _build_chat_responder():
     if not providers:
         return None
     return ChainedChatResponder(tuple(providers))
+
+
+def _build_web_search_responder():
+    """Возвращает PolzaWebSearchChatResponder, если задан ключ Polza.ai
+    (Фаза 21, см. dev/QUESTIONS.md №18) — используется AssistantService
+    ТОЛЬКО когда keyword-поиск по НСИ не нашёл ничего, не как часть
+    общей цепочки _build_chat_responder(). Модель — первая из
+    settings.polza_models (тот же список, что и для остальных
+    Polza-провайдеров, отдельная настройка не заводится)."""
+    settings = get_settings()
+    if not settings.polza_api_key or not settings.polza_models:
+        return None
+    return PolzaWebSearchChatResponder(
+        api_key=settings.polza_api_key, model=settings.polza_models[0]
+    )
 
 
 def _build_text_generator():
