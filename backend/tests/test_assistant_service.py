@@ -120,6 +120,33 @@ def test_ask_does_not_use_web_search_when_nsi_finds_matches(tmp_path: Path):
     assert "Сталь 45" in reply.text
 
 
+def test_ask_prefers_web_search_over_chat_responder_when_nsi_finds_nothing(tmp_path: Path):
+    """Регрессия найдена на живом сервере: обычный chat_responder с
+    антигаллюцинационным промптом при пустых matches УСПЕШНО отвечает
+    "не найдено в НСИ" — это не исключение, поэтому если веб-поиск
+    проверялся бы только внутри except основного chat_responder, он бы
+    никогда не вызывался. Веб-поиск обязан пробоваться ПЕРВЫМ при пустых
+    matches, до обычного chat_responder, а не только как запасной путь
+    на случай сетевой ошибки."""
+
+    class _StubChatResponderThatHonestlySaysNotFound:
+        def reply(self, *, question: str, context_facts: dict) -> ChatReply:
+            return ChatReply(text="В базе НСИ информация не найдена.", generated_by="llm")
+
+    class _StubWebSearchResponder:
+        def reply(self, *, question: str, context_facts: dict) -> ChatReply:
+            return ChatReply(text="ответ из интернета", generated_by="llm")
+
+    service = _service(
+        tmp_path,
+        chat_responder=_StubChatResponderThatHonestlySaysNotFound(),
+        web_search_responder=_StubWebSearchResponder(),
+    )
+    reply = service.ask("зюзюкин Ы-9000 кварзоплетень")
+
+    assert reply == ChatReply(text="ответ из интернета", generated_by="llm")
+
+
 def test_ask_falls_back_to_template_when_web_search_raises(tmp_path: Path):
     class _FailingWebSearchResponder:
         def reply(self, *, question: str, context_facts: dict) -> ChatReply:

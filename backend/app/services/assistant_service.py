@@ -14,7 +14,11 @@ LLM пробуется первой, любая ошибка откатывае�
 достоверности источник, используется ТОЛЬКО когда keyword-поиск по НСИ
 не нашёл вообще ничего (matches пуст) — не встроен в общую цепочку
 chat_responder, чтобы модель не могла предпочесть интернет реальным
-данным локальной базы, когда они уже есть в контексте.
+данным локальной базы, когда они уже есть в контексте. При пустых
+matches веб-поиск пробуется ПЕРЕД обычным chat_responder (не после) —
+обычный chat_responder с антигаллюцинационным промптом при пустых
+matches УСПЕШНО отвечает "не найдено", это не исключение, поэтому
+проверка "только в except" никогда бы не дошла до веб-поиска.
 """
 
 from __future__ import annotations
@@ -116,6 +120,23 @@ class AssistantService:
         matches = self._search(question)
         context_facts = {"matches": [{"table": m.table, "summary": m.summary} for m in matches]}
 
+        # Регрессия, найденная на живом сервере: если matches пуст, а
+        # обычный chat_responder всё же настроен (антигаллюцинационный
+        # промпт, ограниченный переданными фактами), он УСПЕШНО отвечает
+        # "не найдено в НСИ" — это не исключение, поэтому веб-поиск
+        # никогда не запускался бы, если проверять его только в except.
+        # Правильный порядок при пустых matches: веб-поиск первым (пока
+        # он ещё может дать содержательный ответ), затем обычный
+        # chat_responder как фолбэк, затем шаблон.
+        if not matches and self._web_search_responder is not None:
+            try:
+                return self._web_search_responder.reply(question=question, context_facts=context_facts)
+            except Exception:
+                logger.warning(
+                    "Веб-поиск через Polza.ai недоступен, используется следующий провайдер",
+                    exc_info=True,
+                )
+
         if self._chat_responder is not None:
             try:
                 return self._chat_responder.reply(question=question, context_facts=context_facts)
@@ -125,20 +146,6 @@ class AssistantService:
                 # всегда доступен офлайн (тот же принцип, что KdReviewService).
                 logger.warning(
                     "Чат-ассистент LLM недоступен, используется шаблонный fallback",
-                    exc_info=True,
-                )
-
-        # Веб-поиск — только если в НСИ вообще ничего не нашлось (matches
-        # пуст). Если matches непустой, но chat_responder упал с ошибкой
-        # выше — это сетевой/провайдерский сбой, а не отсутствие данных в
-        # НСИ, веб-поиск здесь не поможет и не должен подменять реальные
-        # найденные факты интернет-источником.
-        if not matches and self._web_search_responder is not None:
-            try:
-                return self._web_search_responder.reply(question=question, context_facts=context_facts)
-            except Exception:
-                logger.warning(
-                    "Веб-поиск через Polza.ai недоступен, используется шаблонный fallback",
                     exc_info=True,
                 )
 
