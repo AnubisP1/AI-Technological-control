@@ -116,7 +116,7 @@ export function AssistantChatPanel() {
                 <div className="mt-1 flex items-center gap-1 text-[10px] text-ink-dim">
                   {m.generatedBy === 'llm' ? (
                     <>
-                      <Cloud className="h-3 w-3" /> YandexGPT по фактам из НСИ
+                      <Cloud className="h-3 w-3" /> AI-модель по фактам из НСИ
                     </>
                   ) : (
                     <>
