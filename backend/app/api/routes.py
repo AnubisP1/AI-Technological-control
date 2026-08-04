@@ -26,8 +26,12 @@ from app.infrastructure.db.nsi_db import NsiDatabase, build_database, connect
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
 from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanningLookup
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
-from app.infrastructure.llm.yandex_gpt_chat_responder import YandexGptChatResponder
-from app.infrastructure.llm.yandex_gpt_text_generator import YandexGptTextGenerator
+from app.infrastructure.llm.chained_chat_responder import ChainedChatResponder
+from app.infrastructure.llm.chained_text_generator import ChainedTextGenerator
+from app.infrastructure.llm.polza_chat_responder import PolzaChatResponder
+from app.infrastructure.llm.polza_text_generator import PolzaTextGenerator
+from app.infrastructure.llm.qwen_chat_responder import QwenChatResponder
+from app.infrastructure.llm.qwen_text_generator import QwenTextGenerator
 from app.infrastructure.quality_control.opencv_photo_comparator import OpenCvPhotoComparator
 from app.infrastructure.resource_governor import configure as get_resource_limits
 from app.infrastructure.worker_pool import run_heavy
@@ -142,8 +146,8 @@ def _get_assistant_service() -> AssistantService:
 async def ask_assistant(body: ChatQuestion) -> dict:
     """AI-ассистент по вопросам НСИ/технологичности (Фаза 17, часть 5,
     экран "Обзор") — keyword-поиск по справочникам НСИ + LLM/шаблонный
-    fallback (см. AssistantService)."""
-    reply = _get_assistant_service().ask(body.question)
+    fallback (см. AssistantService). Через run_heavy — см. review_kd."""
+    reply = await run_heavy(_get_assistant_service().ask, body.question)
     return {"text": reply.text, "generated_by": reply.generated_by}
 
 
@@ -257,29 +261,46 @@ def _review_to_dict(report: KdReviewReport) -> dict:
 
 
 def _build_chat_responder():
-    """Возвращает YandexGptChatResponder, если в .env заданы ключи (тот
-    же осознанный сетевой путь, что _build_text_generator), иначе None —
-    тогда AssistantService отвечает целиком офлайн шаблонным перечислением
-    найденных в НСИ фактов."""
+    """Собирает цепочку реальных LLM-провайдеров по приоритету (Фаза 18,
+    часть 2, см. dev/QUESTIONS.md №15): Polza.ai (облачный, если задан
+    ключ) первым, локальный Qwen (если задан путь к модели) — фолбэком.
+    Если ни один не настроен — возвращает None, и AssistantService
+    отвечает целиком офлайн шаблонным перечислением найденных фактов.
+    Существование файла локальной модели не проверяется здесь заранее
+    (дорого на каждый запрос) — LlamaCppEngine проверяет его при первой
+    реальной загрузке и поднимает LlamaModelUnavailableError, которую
+    ChainedChatResponder ловит и переходит к следующему провайдеру."""
     settings = get_settings()
-    if not settings.yandex_gpt_api_key or not settings.yandex_gpt_folder_id:
+    providers = []
+    if settings.polza_api_key:
+        providers.append(PolzaChatResponder(api_key=settings.polza_api_key))
+    if settings.llama_model_path is not None:
+        providers.append(
+            QwenChatResponder(
+                model_path=settings.llama_model_path, context_size=settings.llama_context_size
+            )
+        )
+    if not providers:
         return None
-    return YandexGptChatResponder(
-        api_key=settings.yandex_gpt_api_key, folder_id=settings.yandex_gpt_folder_id
-    )
+    return ChainedChatResponder(tuple(providers))
 
 
 def _build_text_generator():
-    """Возвращает YandexGptTextGenerator, если в .env заданы ключи
-    (осознанное исключение из офлайн-требования, см. QUESTIONS.md №12),
-    иначе None — тогда KdReviewService работает целиком офлайн на
-    шаблонном тексте."""
+    """Аналог _build_chat_responder() для KdReviewService — та же
+    цепочка приоритетов (Polza.ai -> локальный Qwen -> None/шаблон)."""
     settings = get_settings()
-    if not settings.yandex_gpt_api_key or not settings.yandex_gpt_folder_id:
+    providers = []
+    if settings.polza_api_key:
+        providers.append(PolzaTextGenerator(api_key=settings.polza_api_key))
+    if settings.llama_model_path is not None:
+        providers.append(
+            QwenTextGenerator(
+                model_path=settings.llama_model_path, context_size=settings.llama_context_size
+            )
+        )
+    if not providers:
         return None
-    return YandexGptTextGenerator(
-        api_key=settings.yandex_gpt_api_key, folder_id=settings.yandex_gpt_folder_id
-    )
+    return ChainedTextGenerator(tuple(providers))
 
 
 @router.post("/kd/analyze")
@@ -355,7 +376,10 @@ async def review_kd(drawing: UploadFile) -> dict:
     review_service = KdReviewService(
         nsi_lookup=SqliteNsiLookup(metal_db_path), text_generator=_build_text_generator()
     )
-    report = review_service.review(drawing_model)
+    # Через run_heavy: с локальным Qwen (Фаза 18) _summarize() может
+    # выполнять несколько секунд чистого CPU-инференса — блокировать им
+    # event loop недопустимо (см. worker_pool.py).
+    report = await run_heavy(review_service.review, drawing_model)
     return _review_to_dict(report)
 
 
@@ -374,7 +398,7 @@ async def review_kd_pdf(drawing: UploadFile) -> Response:
     review_service = KdReviewService(
         nsi_lookup=SqliteNsiLookup(metal_db_path), text_generator=_build_text_generator()
     )
-    report = review_service.review(drawing_model)
+    report = await run_heavy(review_service.review, drawing_model)
 
     part_name = drawing_model.title_block.part_name if drawing_model else None
     pdf_bytes = await run_heavy(generate_kd_review_pdf, report, part_name=part_name)

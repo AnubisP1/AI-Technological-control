@@ -32,12 +32,25 @@ class Settings(BaseSettings):
     # прокси-бокс (см. STEP_MESH_UNAVAILABLE в step_mesh_exporter.py).
     pythonocc_python_path: Path | None = None
 
-    # ⚠️ Осознанное исключение из офлайн-требования ТЗ (Фаза 8, см.
-    # dev/QUESTIONS.md №12) — облачный YandexGPT API для формулировок
-    # отчёта КД. Если не заданы, KdReviewService работает полностью
-    # офлайн на шаблонном тексте (см. TemplateTextGenerator).
-    yandex_gpt_api_key: str | None = None
-    yandex_gpt_folder_id: str | None = None
+    # Локальный LLM (Фаза 18) — Qwen2.5-7B-Instruct, GGUF, через
+    # llama-cpp-python, CPU-only. Заменяет прежний облачный YandexGPT-путь
+    # (см. dev/QUESTIONS.md №12/№14) — полностью офлайн, вес модели
+    # скачивается один раз при установке (см. dev/README.md), не в
+    # рантайме. Путь не хардкодится и не угадывается — если не задан
+    # или файл не существует, KdReviewService/AssistantService работают
+    # полностью на шаблонном тексте (см. TemplateTextGenerator).
+    llama_model_path: Path | None = None
+    llama_context_size: int = 4096
+
+    # ⚠️ Второй, облачный LLM-путь (Фаза 18, часть 2, см. dev/QUESTIONS.md
+    # №15) — Polza.ai, OpenAI-совместимый API, та же модель
+    # qwen/qwen-2.5-7b-instruct, что и локальный контур выше. Осознанное
+    # повторное исключение из офлайн-требования ТЗ по прямому решению
+    # пользователя: работает ПАРАЛЛЕЛЬНО локальному Qwen (приоритетнее в
+    # _build_text_generator()/_build_chat_responder(), см. routes.py), не
+    # заменяет его — локальный контур остаётся офлайн-путём для сценариев
+    # без сети. Ключ — только через .env, никогда не в коде/гите.
+    polza_api_key: str | None = None
 
 
 @lru_cache(maxsize=1)
