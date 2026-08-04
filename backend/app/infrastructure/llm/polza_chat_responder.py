@@ -6,6 +6,9 @@ API) — Фаза 18, часть 2 (см. dev/QUESTIONS.md №15). Тот же �
 Требует сети и ключа API (POLZA_API_KEY в .env) — при их отсутствии или
 ошибке вызывающий код обязан откатиться на следующий провайдер в цепочке
 (локальный Qwen, затем шаблон), не падать (см. AssistantService).
+
+Модель — параметр конструктора, не константа (см. PolzaTextGenerator —
+тот же ключ может не иметь доступа к произвольной модели каталога).
 """
 
 from __future__ import annotations
@@ -18,7 +21,6 @@ from app.domain.assistant.chat_responder_port import ChatReply
 from app.infrastructure.llm.assistant_chat_prompt import SYSTEM_PROMPT, build_user_prompt
 
 _COMPLETION_URL = "https://polza.ai/api/v1/chat/completions"
-_MODEL = "qwen/qwen-2.5-7b-instruct"
 _REQUEST_TIMEOUT_SECONDS = 30
 _MAX_TOKENS = 400
 _TEMPERATURE = 0.2
@@ -29,12 +31,13 @@ class PolzaApiError(RuntimeError):
 
 
 class PolzaChatResponder:
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, model: str) -> None:
         self._api_key = api_key
+        self._model = model
 
     def reply(self, *, question: str, context_facts: dict) -> ChatReply:
         payload = {
-            "model": _MODEL,
+            "model": self._model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": build_user_prompt(question, context_facts)},

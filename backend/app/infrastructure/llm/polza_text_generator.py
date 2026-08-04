@@ -13,6 +13,13 @@ API) — Фаза 18, часть 2 (см. dev/QUESTIONS.md №15).
 (review_summary_prompt.py), чтобы качество и антигаллюцинационные
 ограничения не расходились между провайдерами.
 
+Модель — параметр конструктора, не константа: тариф конкретного ключа
+Polza.ai может не давать доступ к произвольной модели из общего каталога
+(найдено на практике — qwen/qwen-2.5-7b-instruct отвечал 403 FORBIDDEN,
+хотя был в /v1/models). _build_text_generator() в routes.py собирает
+несколько инстансов с разными моделями как отдельные звенья цепочки
+ChainedTextGenerator, а не один жёстко заданный вызов.
+
 Требует сети и ключа API (POLZA_API_KEY в .env) — при их отсутствии или
 сетевой ошибке вызывающий код обязан откатиться на следующий провайдер
 в цепочке, не падать (см. KdReviewService._summarize).
@@ -28,7 +35,6 @@ from app.domain.kd_review.text_generator_port import GeneratedText
 from app.infrastructure.llm.review_summary_prompt import SYSTEM_PROMPT, build_user_prompt
 
 _COMPLETION_URL = "https://polza.ai/api/v1/chat/completions"
-_MODEL = "qwen/qwen-2.5-7b-instruct"
 _REQUEST_TIMEOUT_SECONDS = 30
 _MAX_TOKENS = 500
 _TEMPERATURE = 0.2
@@ -39,12 +45,13 @@ class PolzaApiError(RuntimeError):
 
 
 class PolzaTextGenerator:
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, model: str) -> None:
         self._api_key = api_key
+        self._model = model
 
     def summarize_review(self, *, facts: dict) -> GeneratedText:
         payload = {
-            "model": _MODEL,
+            "model": self._model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": build_user_prompt(facts)},

@@ -262,8 +262,9 @@ def _review_to_dict(report: KdReviewReport) -> dict:
 
 def _build_chat_responder():
     """Собирает цепочку реальных LLM-провайдеров по приоритету (Фаза 18,
-    часть 2, см. dev/QUESTIONS.md №15): Polza.ai (облачный, если задан
-    ключ) первым, локальный Qwen (если задан путь к модели) — фолбэком.
+    часть 2, см. dev/QUESTIONS.md №15): по одному звену Polza.ai на
+    каждую модель из settings.polza_models (если задан ключ) первыми,
+    локальный Qwen (если задан путь к модели) — фолбэком последним.
     Если ни один не настроен — возвращает None, и AssistantService
     отвечает целиком офлайн шаблонным перечислением найденных фактов.
     Существование файла локальной модели не проверяется здесь заранее
@@ -273,7 +274,8 @@ def _build_chat_responder():
     settings = get_settings()
     providers = []
     if settings.polza_api_key:
-        providers.append(PolzaChatResponder(api_key=settings.polza_api_key))
+        for model in settings.polza_models:
+            providers.append(PolzaChatResponder(api_key=settings.polza_api_key, model=model))
     if settings.llama_model_path is not None:
         providers.append(
             QwenChatResponder(
@@ -291,7 +293,8 @@ def _build_text_generator():
     settings = get_settings()
     providers = []
     if settings.polza_api_key:
-        providers.append(PolzaTextGenerator(api_key=settings.polza_api_key))
+        for model in settings.polza_models:
+            providers.append(PolzaTextGenerator(api_key=settings.polza_api_key, model=model))
     if settings.llama_model_path is not None:
         providers.append(
             QwenTextGenerator(

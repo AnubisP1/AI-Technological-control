@@ -1,4 +1,5 @@
 import json
+import urllib.request
 from unittest.mock import patch
 
 import pytest
@@ -24,7 +25,7 @@ def _mock_urlopen_response(payload: dict):
 
 
 def test_polza_text_generator_parses_successful_response():
-    generator = PolzaTextGenerator(api_key="test-key")
+    generator = PolzaTextGenerator(api_key="test-key", model="test-model")
     fake_response = {"choices": [{"message": {"content": "Связный анализ технологичности."}}]}
 
     with patch("urllib.request.urlopen", return_value=_mock_urlopen_response(fake_response)):
@@ -35,7 +36,7 @@ def test_polza_text_generator_parses_successful_response():
 
 
 def test_polza_text_generator_raises_on_unexpected_response_shape():
-    generator = PolzaTextGenerator(api_key="test-key")
+    generator = PolzaTextGenerator(api_key="test-key", model="test-model")
 
     with patch("urllib.request.urlopen", return_value=_mock_urlopen_response({"unexpected": True})):
         with pytest.raises(PolzaTextApiError):
@@ -45,7 +46,7 @@ def test_polza_text_generator_raises_on_unexpected_response_shape():
 def test_polza_text_generator_raises_on_network_error():
     import urllib.error
 
-    generator = PolzaTextGenerator(api_key="test-key")
+    generator = PolzaTextGenerator(api_key="test-key", model="test-model")
 
     with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("нет сети")):
         with pytest.raises(PolzaTextApiError):
@@ -53,7 +54,7 @@ def test_polza_text_generator_raises_on_network_error():
 
 
 def test_polza_chat_responder_parses_successful_response():
-    responder = PolzaChatResponder(api_key="test-key")
+    responder = PolzaChatResponder(api_key="test-key", model="test-model")
     fake_response = {"choices": [{"message": {"content": "Сталь 45 найдена в справочнике."}}]}
 
     with patch("urllib.request.urlopen", return_value=_mock_urlopen_response(fake_response)):
@@ -66,8 +67,38 @@ def test_polza_chat_responder_parses_successful_response():
 def test_polza_chat_responder_raises_on_network_error():
     import urllib.error
 
-    responder = PolzaChatResponder(api_key="test-key")
+    responder = PolzaChatResponder(api_key="test-key", model="test-model")
 
     with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("нет сети")):
         with pytest.raises(PolzaChatApiError):
             responder.reply(question="вопрос", context_facts={"matches": []})
+
+
+def test_polza_text_generator_sends_configured_model_in_request_body():
+    """Регрессия: модель — параметр конструктора, не константа (найдено
+    на практике — qwen/qwen-2.5-7b-instruct отвечал 403 FORBIDDEN с
+    реальным ключом Polza.ai, хотя был в /v1/models — тариф ключа не
+    давал доступа к этой конкретной модели). Каждый инстанс должен
+    отправлять именно ту модель, с которой он создан, а не общую
+    захардкоженную константу."""
+    generator = PolzaTextGenerator(api_key="test-key", model="openai/gpt-5.6-luna")
+    fake_response = {"choices": [{"message": {"content": "ok"}}]}
+
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen_response(fake_response)) as mock_urlopen:
+        generator.summarize_review(facts={"findings": [], "candidate_materials": []})
+
+    sent_request: urllib.request.Request = mock_urlopen.call_args[0][0]
+    sent_body = json.loads(sent_request.data.decode("utf-8"))
+    assert sent_body["model"] == "openai/gpt-5.6-luna"
+
+
+def test_polza_chat_responder_sends_configured_model_in_request_body():
+    responder = PolzaChatResponder(api_key="test-key", model="deepseek/deepseek-v4-flash-0731")
+    fake_response = {"choices": [{"message": {"content": "ok"}}]}
+
+    with patch("urllib.request.urlopen", return_value=_mock_urlopen_response(fake_response)) as mock_urlopen:
+        responder.reply(question="вопрос", context_facts={"matches": []})
+
+    sent_request: urllib.request.Request = mock_urlopen.call_args[0][0]
+    sent_body = json.loads(sent_request.data.decode("utf-8"))
+    assert sent_body["model"] == "deepseek/deepseek-v4-flash-0731"
