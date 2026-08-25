@@ -386,6 +386,74 @@ export async function simulatePrintManufacturing(params: {
   return parseJsonOrThrow(response)
 }
 
+// ---------- Модуль 2 (Фаза 22): реальный фрезерный тулпас по геометрии ----------
+
+export interface ToolpathMove {
+  kind: 'rapid' | 'linear' | 'arc_cw' | 'arc_ccw'
+  x_mm: number
+  y_mm: number
+  z_mm: number
+}
+
+export interface ToolpathOperation {
+  sequence_no: number
+  feature_kind: 'facing' | 'pocket' | 'hole'
+  tool_diameter_mm: number
+  tool_designation: string
+  spindle_speed_rpm: number
+  feed_mm_min: number
+  gcode_lines: string[]
+  estimated_time_min: number
+  source_note: string
+  // Границы шага voxel-симуляции, покрываемые этой операцией — для
+  // подсветки активной операции синхронно с прогрессом ToolpathViewer.
+  start_step: number
+  end_step: number
+  // Реальные координаты движения инструмента — для анимации положения
+  // фрезы в ToolpathViewer, синхронно с voxel-съёмом материала.
+  moves: ToolpathMove[]
+}
+
+export interface ToolpathPlan {
+  part_name: string | null
+  stock_bounding_box_mm: [number, number, number, number, number, number]
+  unsupported_warning: string | null
+  warnings: string[]
+  operations: ToolpathOperation[]
+}
+
+export interface VoxelGridSpec {
+  origin_mm: [number, number, number]
+  voxel_size_mm: number
+  dims: [number, number, number]
+}
+
+export interface MaterialRemovalSimulation {
+  grid: VoxelGridSpec
+  total_steps: number
+  // Компактный формат на событие: [voxel_x, voxel_y, voxel_z, removed_at_step]
+  events: [number, number, number, number][]
+}
+
+export interface ToolpathResponse {
+  toolpath: ToolpathPlan
+  simulation: MaterialRemovalSimulation | null
+}
+
+export async function generateMetalToolpath(params: {
+  stepModel: File
+  drawing: File
+}): Promise<ToolpathResponse> {
+  const form = new FormData()
+  form.append('step_model', params.stepModel)
+  form.append('drawing', params.drawing)
+  const response = await fetch(`${API_BASE}/manufacturing/toolpath/metal`, {
+    method: 'POST',
+    body: form,
+  })
+  return parseJsonOrThrow(response)
+}
+
 // ---------- Модуль 3: оценка качества по фото ----------
 
 export type QualityVerdict = 'ok' | 'defective' | 'inconclusive'

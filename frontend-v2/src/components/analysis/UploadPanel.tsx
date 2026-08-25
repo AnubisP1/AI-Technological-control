@@ -105,7 +105,7 @@ export function UploadPanel({
             icon={FileText}
           />
           <FileField
-            label="STEP-модель (опционально)"
+            label="STEP-модель"
             file={stepModel}
             onChange={onStepModelChange}
             icon={Box}

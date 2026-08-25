@@ -89,4 +89,14 @@ INSERT INTO feed_reference (operation_type_id, material_group_id, feed_mm_rev_mi
 ((SELECT id FROM operation_type WHERE code = 'GRIND'), (SELECT id FROM material_group WHERE code = 'STEEL_CARBON'), 0.01, 0.03, 0.005, 0.02,
  'Справочник технолога-машиностроителя, т.2, табл. 55 — продольная подача и глубина при круглом наружном шлифовании'),
 ((SELECT id FROM operation_type WHERE code = 'GRIND'), (SELECT id FROM material_group WHERE code = 'STEEL_ALLOY'), 0.01, 0.025, 0.005, 0.015,
- 'Справочник технолога-машиностроителя, т.2, табл. 55');
+ 'Справочник технолога-машиностроителя, т.2, табл. 55'),
+-- Алюминиевые сплавы (Фаза 22 — реальный CAM-тулпас, демо-fixture
+-- Кронштейн.STEP — алюминиевая деталь) — тот же справочник, табл. 35/25
+-- дают отдельные строки и для алюминиевых сплавов (более высокая
+-- подача, чем для стали — типично для лучшей обрабатываемости алюминия,
+-- согласуется с уже засеянным material_group.machinability_index=2.5
+-- для ALUM против 1.0 для STEEL_CARBON).
+((SELECT id FROM operation_type WHERE code = 'MILL'), (SELECT id FROM material_group WHERE code = 'ALUM'), 0.1, 0.18, 1.5, 4.0,
+ 'Справочник технолога-машиностроителя, т.2, табл. 35 — подача на зуб при фрезеровании концевыми фрезами алюминиевых сплавов'),
+((SELECT id FROM operation_type WHERE code = 'DRILL'), (SELECT id FROM material_group WHERE code = 'ALUM'), 0.15, 0.25, NULL, NULL,
+ 'Справочник технолога-машиностроителя, т.2, табл. 25 — подача при сверлении алюминиевых сплавов спиральными свёрлами');

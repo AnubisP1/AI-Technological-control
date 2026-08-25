@@ -15,6 +15,7 @@ from app.domain.process_planning.process_planning_lookup_port import (
     MaterialMachinabilityRecord,
     OperationTypeRecord,
     SurfaceHardeningMethodRecord,
+    ToolingRecord,
     ToolingTypeRecord,
 )
 from app.infrastructure.db.nsi_db import connect
@@ -256,5 +257,24 @@ class SqliteProcessPlanningLookup:
             if row is None:
                 return None
             return MaterialMachinabilityRecord(machinability_index=row["machinability_index"])
+        finally:
+            connection.close()
+
+    def find_tooling_by_type_code(self, tooling_type_code: str) -> tuple[ToolingRecord, ...]:
+        connection = connect(self._metal_db_path)
+        try:
+            rows = connection.execute(
+                """
+                SELECT tooling.id, tooling.designation, tooling.diameter_mm
+                FROM tooling
+                JOIN tooling_type ON tooling_type.id = tooling.tooling_type_id
+                WHERE tooling_type.code = ? AND tooling.diameter_mm IS NOT NULL
+                """,
+                (tooling_type_code,),
+            ).fetchall()
+            return tuple(
+                ToolingRecord(id=row["id"], designation=row["designation"], diameter_mm=row["diameter_mm"])
+                for row in rows
+            )
         finally:
             connection.close()

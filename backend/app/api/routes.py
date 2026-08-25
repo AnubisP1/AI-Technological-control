@@ -53,6 +53,7 @@ from app.services.process_planning_service import ProcessPlanningService
 from app.services.quality_control_service import QualityControlService
 from app.services.route_card_generator import RouteCardGenerator, parse_layout_columns
 from app.services.route_card_pdf_export import generate_route_card_pdf
+from app.services.toolpath_pipeline import ToolpathPipelineResult, run_toolpath_pipeline
 
 router = APIRouter()
 _approval_service = ApprovalService()
@@ -870,9 +871,13 @@ def _simulation_plan_to_dict(plan: SimulationPlan) -> dict:
 
 @router.post("/manufacturing/simulate/metal")
 async def simulate_metal_manufacturing(drawing: UploadFile) -> dict:
-    """Модуль 2, шаг 2 (металл): строит план симуляции изготовления из
-    того же автоподбора техпроцесса, что и /kd/route-card — эндпоинт не
-    выполняет собственный подбор оборудования заново.
+    """Модуль 2, шаг 2 (металл), LEGACY-путь без геометрии: строит план
+    статичной UI-симуляции (program_templates.py, одинаковый текст
+    программы для любой детали данного типа операции) из того же
+    автоподбора техпроцесса, что и /kd/route-card. Используется только
+    для деталей БЕЗ загруженной STEP-модели — при наличии STEP фронтенд
+    вызывает /manufacturing/toolpath/metal (Фаза 22, реальный тулпас по
+    геометрии), а не этот эндпоинт.
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
@@ -923,6 +928,107 @@ async def simulate_print_manufacturing(
         "plan": _simulation_plan_to_dict(plan),
         "warnings": list(planning_result.warnings),
     }
+
+
+def _toolpath_pipeline_result_to_dict(result: ToolpathPipelineResult) -> dict:
+    toolpath = result.toolpath
+
+    # Границы шагов voxel-симуляции по операциям — считается тем же
+    # правилом, что material_removal_simulator.simulate_material_removal
+    # использует для инкремента step (один шаг на каждый не-rapid move,
+    # последовательно по всем операциям плана) — не отдельный источник
+    # истины, а зеркало того же подсчёта, чтобы фронтенд мог подсветить
+    # активную операцию синхронно с прогрессом voxel-анимации без
+    # передачи полного списка moves (которые не сериализуются отдельно).
+    step_cursor = 0
+    operations_dicts = []
+    for op in toolpath.operations:
+        non_rapid_moves = sum(1 for m in op.moves if m.kind != "rapid")
+        start_step = step_cursor
+        step_cursor += non_rapid_moves
+        operations_dicts.append(
+            {
+                "sequence_no": op.sequence_no,
+                "feature_kind": op.feature_kind,
+                "tool_diameter_mm": op.tool_diameter_mm,
+                "tool_designation": op.tool_designation,
+                "spindle_speed_rpm": op.spindle_speed_rpm,
+                "feed_mm_min": op.feed_mm_min,
+                "gcode_lines": list(op.gcode_lines),
+                "estimated_time_min": op.estimated_time_min,
+                "source_note": op.source_note,
+                "start_step": start_step,
+                "end_step": step_cursor,
+                # Реальные координаты движения инструмента — нужны фронтенду
+                # для анимации положения фрезы синхронно с voxel-съёмом
+                # (см. ToolpathViewer.tsx), не только для текстового G-code.
+                "moves": [
+                    {"kind": m.kind, "x_mm": m.x_mm, "y_mm": m.y_mm, "z_mm": m.z_mm}
+                    for m in op.moves
+                ],
+            }
+        )
+
+    toolpath_dict = {
+        "part_name": toolpath.part_name,
+        "stock_bounding_box_mm": list(toolpath.stock_bounding_box_mm),
+        "unsupported_warning": toolpath.unsupported_warning,
+        "warnings": list(toolpath.warnings),
+        "operations": operations_dicts,
+    }
+
+    simulation_dict = None
+    if result.simulation is not None:
+        sim = result.simulation
+        simulation_dict = {
+            "grid": {
+                "origin_mm": list(sim.grid.origin_mm),
+                "voxel_size_mm": sim.grid.voxel_size_mm,
+                "dims": list(sim.grid.dims),
+            },
+            "total_steps": sim.total_steps,
+            # Компактный формат [x, y, z, шаг] вместо объектов с ключами —
+            # существенно меньше JSON-payload при десятках тысяч событий
+            # (см. историю разработки Фазы 22: ~1.25МБ объектами против
+            # ~0.59МБ этим форматом на реальном fixture Кронштейн.STEP).
+            "events": [[e.voxel_x, e.voxel_y, e.voxel_z, e.removed_at_step] for e in sim.events],
+        }
+
+    return {"toolpath": toolpath_dict, "simulation": simulation_dict}
+
+
+@router.post("/manufacturing/toolpath/metal")
+async def generate_metal_toolpath(step_model: UploadFile, drawing: UploadFile) -> dict:
+    """Модуль 2, шаг 2 (металл), реальный путь (Фаза 22, dev/PLAN.md):
+    строит фактический 3-осевой фрезерный тулпас по распознанной
+    топологии STEP-модели (не статичный шаблон program_templates.py) —
+    режимы резания из НСИ, реальные координаты движения инструмента,
+    G-code, и voxel-симуляцию съёма материала для визуализации на
+    фронтенде. Требует STEP (для геометрии) и чертёж (для марки
+    материала из штампа) — деталь без топологии/материала получает
+    честный unsupported_warning, не выдуманную траекторию.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        step_path = Path(tmp_dir) / (step_model.filename or "model.step")
+        step_path.write_bytes(await step_model.read())
+        drawing_path = Path(tmp_dir) / (drawing.filename or "drawing.pdf")
+        drawing_path.write_bytes(await drawing.read())
+
+        drawing_model = await run_heavy(_drawing_parser.parse, drawing_path)
+        part_name = drawing_model.title_block.part_name if drawing_model else None
+        material_grade = drawing_model.title_block.material if drawing_model else None
+
+        settings = get_settings()
+        pipeline_result = await run_heavy(
+            run_toolpath_pipeline,
+            step_path=step_path,
+            pythonocc_python_path=settings.pythonocc_python_path,
+            metal_db_path=_get_metal_db_path(),
+            part_name=part_name,
+            material_grade=material_grade,
+        )
+
+    return _toolpath_pipeline_result_to_dict(pipeline_result)
 
 
 def _quality_report_to_dict(report: QualityReport) -> dict:

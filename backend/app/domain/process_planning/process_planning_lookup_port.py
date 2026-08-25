@@ -75,6 +75,13 @@ class MaterialMachinabilityRecord:
     machinability_index: float
 
 
+@dataclass(frozen=True)
+class ToolingRecord:
+    id: int
+    designation: str
+    diameter_mm: float
+
+
 class IProcessPlanningLookup(Protocol):
     def find_material_group_id(self, material_grade: str) -> int | None: ...
     def find_workpiece_type_id_by_code(self, code: str) -> int | None: ...
@@ -106,3 +113,6 @@ class IProcessPlanningLookup(Protocol):
     def find_material_machinability(
         self, material_group_id: int
     ) -> MaterialMachinabilityRecord | None: ...
+    def find_tooling_by_type_code(
+        self, tooling_type_code: str
+    ) -> tuple[ToolingRecord, ...]: ...

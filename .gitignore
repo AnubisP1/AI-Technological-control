@@ -22,3 +22,7 @@ models/*
 
 # OS
 .DS_Store
+
+# Deploy runtime (local process state, not source)
+deploy/logs/
+deploy/pids/

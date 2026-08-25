@@ -19,9 +19,15 @@ import type {
  * открываться с готовыми данными, не запускать повторный вызов API и
  * не требовать отдельного нажатия "Запустить сверку" — анализ уже
  * выполнен один раз при загрузке детали).
+ *
+ * stepModel для металла (Фаза 22) — STEP обязателен для металлических
+ * деталей: без него "Производство" не может построить реальный
+ * фрезерный тулпас по геометрии (только легаси-симуляцию без геометрии,
+ * см. ProductionPage.tsx), это осознанное ужесточение по сравнению с
+ * прежним опциональным STEP на "Анализ детали".
  */
 export type WorkflowInput =
-  | { kind: 'metal'; drawing: File; review: KdReviewReport; routeCard: RouteCard }
+  | { kind: 'metal'; drawing: File; stepModel: File; review: KdReviewReport; routeCard: RouteCard }
   | {
       kind: 'plastic'
       stepModel: File
