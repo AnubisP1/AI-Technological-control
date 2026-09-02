@@ -28,9 +28,6 @@ from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanni
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
 from app.infrastructure.llm.chained_chat_responder import ChainedChatResponder
 from app.infrastructure.llm.chained_text_generator import ChainedTextGenerator
-from app.infrastructure.llm.polza_chat_responder import PolzaChatResponder
-from app.infrastructure.llm.polza_text_generator import PolzaTextGenerator
-from app.infrastructure.llm.polza_web_search_chat_responder import PolzaWebSearchChatResponder
 from app.infrastructure.llm.qwen_chat_responder import QwenChatResponder
 from app.infrastructure.llm.qwen_text_generator import QwenTextGenerator
 from app.infrastructure.quality_control.opencv_photo_comparator import OpenCvPhotoComparator
@@ -266,21 +263,17 @@ def _review_to_dict(report: KdReviewReport) -> dict:
 
 
 def _build_chat_responder():
-    """Собирает цепочку реальных LLM-провайдеров по приоритету (Фаза 18,
-    часть 2, см. dev/QUESTIONS.md №15): по одному звену Polza.ai на
-    каждую модель из settings.polza_models (если задан ключ) первыми,
-    локальный Qwen (если задан путь к модели) — фолбэком последним.
-    Если ни один не настроен — возвращает None, и AssistantService
-    отвечает целиком офлайн шаблонным перечислением найденных фактов.
-    Существование файла локальной модели не проверяется здесь заранее
-    (дорого на каждый запрос) — LlamaCppEngine проверяет его при первой
-    реальной загрузке и поднимает LlamaModelUnavailableError, которую
-    ChainedChatResponder ловит и переходит к следующему провайдеру."""
+    """Собирает цепочку LLM-провайдеров по приоритету. В локальной
+    (offline) сборке облачные провайдеры отсутствуют: доступен только
+    локальный Qwen (если задан путь к модели). Если он не настроен —
+    возвращает None, и AssistantService отвечает целиком офлайн
+    шаблонным перечислением найденных фактов. Существование файла
+    локальной модели не проверяется здесь заранее (дорого на каждый
+    запрос) — LlamaCppEngine проверяет его при первой реальной загрузке
+    и поднимает LlamaModelUnavailableError, которую ChainedChatResponder
+    ловит и переходит к следующему провайдеру."""
     settings = get_settings()
     providers = []
-    if settings.polza_api_key:
-        for model in settings.polza_models:
-            providers.append(PolzaChatResponder(api_key=settings.polza_api_key, model=model))
     if settings.llama_model_path is not None:
         providers.append(
             QwenChatResponder(
@@ -293,28 +286,18 @@ def _build_chat_responder():
 
 
 def _build_web_search_responder():
-    """Возвращает PolzaWebSearchChatResponder, если задан ключ Polza.ai
-    (Фаза 21, см. dev/QUESTIONS.md №18) — используется AssistantService
-    ТОЛЬКО когда keyword-поиск по НСИ не нашёл ничего, не как часть
-    общей цепочки _build_chat_responder(). Модель — первая из
-    settings.polza_models (тот же список, что и для остальных
-    Polza-провайдеров, отдельная настройка не заводится)."""
-    settings = get_settings()
-    if not settings.polza_api_key or not settings.polza_models:
-        return None
-    return PolzaWebSearchChatResponder(
-        api_key=settings.polza_api_key, model=settings.polza_models[0]
-    )
+    """В локальной (offline) сборке веб-поиск недоступен по определению:
+    он требует обращения в интернет, что запрещено в этом контуре.
+    Всегда возвращает None — AssistantService при отсутствии совпадений
+    в НСИ честно сообщает, что данных нет, вместо обращения наружу."""
+    return None
 
 
 def _build_text_generator():
     """Аналог _build_chat_responder() для KdReviewService — та же
-    цепочка приоритетов (Polza.ai -> локальный Qwen -> None/шаблон)."""
+    цепочка приоритетов (локальный Qwen -> None/шаблон)."""
     settings = get_settings()
     providers = []
-    if settings.polza_api_key:
-        for model in settings.polza_models:
-            providers.append(PolzaTextGenerator(api_key=settings.polza_api_key, model=model))
     if settings.llama_model_path is not None:
         providers.append(
             QwenTextGenerator(

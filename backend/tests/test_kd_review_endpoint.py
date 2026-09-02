@@ -34,7 +34,7 @@ def test_review_endpoint_returns_material_and_blank_checks():
     assert isinstance(body["findings"], list)
     assert body["has_blocking_findings"] is False
     # generated_by зависит от окружения (llm, если в .env настроен
-    # реальный LLM-провайдер — Polza.ai/локальный Qwen, Фаза 18, часть 2;
+    # локальный LLM-провайдер (Qwen через llama.cpp);
     # иначе template) — оба пути обязаны дать непустой текст резюме.
     assert body["summary"]["generated_by"] in ("template", "llm")
     assert body["summary"]["text"]

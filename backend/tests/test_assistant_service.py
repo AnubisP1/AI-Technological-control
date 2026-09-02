@@ -150,7 +150,7 @@ def test_ask_prefers_web_search_over_chat_responder_when_nsi_finds_nothing(tmp_p
 def test_ask_falls_back_to_template_when_web_search_raises(tmp_path: Path):
     class _FailingWebSearchResponder:
         def reply(self, *, question: str, context_facts: dict) -> ChatReply:
-            raise RuntimeError("Polza.ai недоступна")
+            raise RuntimeError("веб-поиск недоступен")
 
     service = _service(tmp_path, web_search_responder=_FailingWebSearchResponder())
     reply = service.ask("зюзюкин Ы-9000 кварзоплетень")

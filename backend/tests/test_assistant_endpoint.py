@@ -6,14 +6,19 @@ client = TestClient(app)
 
 
 def test_ask_assistant_endpoint_returns_real_material_match():
-    # generated_by зависит от окружения (llm, если в .env настроен реальный
-    # LLM-провайдер — Polza.ai/локальный Qwen, Фаза 18, часть 2; иначе
-    # template) — само содержимое ответа обязано быть верным в обоих случаях.
+    # generated_by зависит от окружения (llm, если в .env настроен
+    # LLM-провайдер — локальный Qwen (llama.cpp); иначе template) —
+    # само содержимое ответа обязано быть верным в обоих случаях.
     response = client.post("/assistant/chat", json={"question": "Сталь 45"})
     assert response.status_code == 200
     body = response.json()
     assert body["generated_by"] in ("template", "llm")
-    assert "Сталь 45" in body["text"]
+    # Марка проверяется по корню "стал" + номеру, а не буквальной строкой
+    # "Сталь 45": падеж выбирает модель — локальный Qwen отвечает
+    # "информация о стали 45", что так же верно (тот же приём, что и в
+    # тесте честного отказа ниже).
+    text = body["text"].lower()
+    assert "стал" in text and "45" in text
 
 
 def test_ask_assistant_endpoint_handles_no_matches_without_hallucinating():

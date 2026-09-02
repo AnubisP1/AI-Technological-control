@@ -133,7 +133,7 @@ class AssistantService:
                 return self._web_search_responder.reply(question=question, context_facts=context_facts)
             except Exception:
                 logger.warning(
-                    "Веб-поиск через Polza.ai недоступен, используется следующий провайдер",
+                    "Веб-поиск недоступен, используется следующий провайдер",
                     exc_info=True,
                 )
 

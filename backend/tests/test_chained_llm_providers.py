@@ -33,7 +33,7 @@ def test_chained_text_generator_uses_first_working_provider():
 
 
 def test_chained_text_generator_falls_through_to_second_provider_on_first_failure():
-    """Ключевой сценарий Фазы 18, часть 2: Polza.ai (первый) недоступен —
+    """Ключевой сценарий цепочки провайдеров: первый недоступен —
     переход на локальный Qwen (второй), не сразу на шаблон."""
     chain = ChainedTextGenerator((_FailingTextGenerator(), _WorkingTextGenerator()))
     result = chain.summarize_review(facts={"findings": []})
