@@ -43,7 +43,7 @@ class SqliteNsiLookup:
         connection = connect(self._metal_db_path)
         try:
             rows = connection.execute(
-                "SELECT designation, diameter_mm FROM workpiece_blank"
+                "SELECT designation, diameter_mm, thickness_mm FROM workpiece_blank"
             ).fetchall()
             result = []
             for row in rows:
@@ -53,6 +53,7 @@ class SqliteNsiLookup:
                         designation=row["designation"],
                         gost_standard=gost,
                         diameter_mm=row["diameter_mm"],
+                        thickness_mm=row["thickness_mm"],
                     )
                 )
             return tuple(result)

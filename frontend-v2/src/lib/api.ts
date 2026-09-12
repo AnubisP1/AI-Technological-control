@@ -23,6 +23,12 @@ export interface TitleBlockFields {
 
 export interface DrawingAnalysis {
   has_text_layer: boolean
+  /** 'text_layer' — встроенный текст PDF, 'ocr' — распознавание скана. */
+  source_kind?: 'text_layer' | 'ocr'
+  /** Эффективное разрешение растра (точек на дюйм) для сканов. */
+  raster_dpi?: number | null
+  /** Скан слишком низкого качества, чтобы прочитать основную надпись. */
+  is_low_resolution_scan?: boolean
   title_block: TitleBlockFields
   technical_requirements: { number: number; text: string }[]
 }

@@ -38,6 +38,10 @@ class WorkpieceBlankRecord:
     designation: str
     gost_standard: str | None
     diameter_mm: float | None
+    # Толщина плоского проката (лист/плита). Для круглого проката и
+    # поковок остаётся None, как diameter_mm — для листа. Значение по
+    # умолчанию: записи в тестах создаются без этого поля.
+    thickness_mm: float | None = None
 
 
 class INsiLookup(Protocol):

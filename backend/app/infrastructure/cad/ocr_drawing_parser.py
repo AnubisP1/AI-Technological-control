@@ -69,7 +69,9 @@ class OcrDrawingParser:
             lines = self._ocr_lines(binary, zoom)
             raw_text = "\n".join(ln[4] for ln in lines)
             title_block = extract_title_block(lines, page.rect.width, page.rect.height)
-            requirements = extract_technical_requirements(raw_text)
+            requirements = extract_technical_requirements(
+                lines, page.rect.width, page.rect.height
+            )
 
             return DrawingModel(
                 file_path=str(file_path),
@@ -77,9 +79,43 @@ class OcrDrawingParser:
                 title_block=title_block,
                 technical_requirements=requirements,
                 raw_text=raw_text,
+                source_kind="ocr",
+                raster_dpi=self._effective_raster_dpi(document, page),
             )
         finally:
             document.close()
+
+    @staticmethod
+    def _effective_raster_dpi(document: fitz.Document, page: fitz.Page) -> float | None:
+        """Реальное разрешение вложенного растра относительно размера листа.
+
+        Рендер страницы можно заказать хоть в 800 DPI, но детализации это
+        не добавит: она ограничена тем, с каким разрешением лист был
+        отсканирован. Берётся самое большое изображение страницы (мелкие
+        — это логотипы и штампы подписей) и минимум из горизонтали и
+        вертикали: строки основной надписи горизонтальны, поэтому
+        ограничивает их именно вертикальное разрешение.
+        """
+        images = page.get_images(full=True)
+        if not images:
+            return None
+
+        best_dpi: float | None = None
+        for image in images:
+            try:
+                pixmap = fitz.Pixmap(document, image[0])
+            except Exception:
+                # Битый или неподдерживаемый объект изображения — не повод
+                # ронять разбор чертежа целиком.
+                continue
+            if page.rect.width <= 0 or page.rect.height <= 0:
+                continue
+            dpi_x = pixmap.width * 72 / page.rect.width
+            dpi_y = pixmap.height * 72 / page.rect.height
+            dpi = min(dpi_x, dpi_y)
+            if best_dpi is None or dpi > best_dpi:
+                best_dpi = dpi
+        return best_dpi
 
     def _ocr_lines(self, binary_image: np.ndarray, zoom: float) -> list[Line]:
         data = pytesseract.image_to_data(

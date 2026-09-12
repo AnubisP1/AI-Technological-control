@@ -171,6 +171,11 @@ def _result_to_dict(result: KdAnalysisResult) -> dict:
         tb = result.drawing.title_block
         drawing_json = {
             "has_text_layer": result.drawing.has_text_layer,
+            # Источник текста и качество скана — чтобы интерфейс мог
+            # отличить «поля нет на чертеже» от «поле не прочитано».
+            "source_kind": result.drawing.source_kind,
+            "raster_dpi": result.drawing.raster_dpi,
+            "is_low_resolution_scan": result.drawing.is_low_resolution_scan,
             "title_block": {
                 "designation": tb.designation,
                 "part_name": tb.part_name,

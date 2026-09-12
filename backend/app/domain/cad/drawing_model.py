@@ -36,6 +36,14 @@ class TechnicalRequirement:
     text: str
 
 
+# Ниже этого разрешения строка основной надписи занимает считанные
+# пиксели и не читается никаким OCR. Замерено на корпусе реальных
+# чертежей: у скана 59 DPI на лист A1 строка штампа ~12 px, и попытки
+# распознать её при рендере 400 и 800 DPI с апскейлом дают только
+# крупный текст. Это предел разрешения исходника, а не качества движка.
+LOW_DPI_THRESHOLD = 150.0
+
+
 @dataclass(frozen=True)
 class DrawingModel:
     file_path: str
@@ -43,6 +51,13 @@ class DrawingModel:
     title_block: TitleBlockFields
     technical_requirements: tuple[TechnicalRequirement, ...] = field(default_factory=tuple)
     raw_text: str = ""
+    # Откуда взят текст: 'text_layer' — встроенный текстовый слой PDF,
+    # 'ocr' — распознавание растра. Нужно, чтобы отличать «поле пустое
+    # на чертеже» от «поле не прочитано из-за качества файла».
+    source_kind: str = "text_layer"
+    # Эффективное разрешение растра для сканов (точек на дюйм); None для
+    # чертежей с текстовым слоем и для растров без вложенного изображения.
+    raster_dpi: float | None = None
 
     @property
     def has_text_layer(self) -> bool:
@@ -50,3 +65,15 @@ class DrawingModel:
         (CRAFT+CRNN), который на этой фазе не реализован, а не то, что
         текста на чертеже нет."""
         return len(self.raw_text.strip()) > 0
+
+    @property
+    def is_low_resolution_scan(self) -> bool:
+        """Скан слишком низкого разрешения, чтобы основную надпись можно
+        было прочитать в принципе. Отличать этот случай обязательно:
+        иначе нераспознанный материал выглядит как «материал на чертеже
+        не указан», хотя он указан и корректен."""
+        return (
+            self.source_kind == "ocr"
+            and self.raster_dpi is not None
+            and self.raster_dpi < LOW_DPI_THRESHOLD
+        )

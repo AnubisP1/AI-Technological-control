@@ -89,8 +89,14 @@ class KdReviewService:
 
         gost_checks = self._run_gost_checks(drawing)
 
-        findings = self._build_findings(material_check, blank_check, tt_checks)
+        findings = self._build_findings(material_check, blank_check, tt_checks, drawing)
         findings = findings + self._gost_findings(gost_checks)
+        # Предупреждение о качестве скана идёт ПЕРВЫМ: оно объясняет
+        # причину остальных «не распознано» и без него отчёт вводит в
+        # заблуждение.
+        scan_finding = self._low_resolution_finding(drawing)
+        if scan_finding is not None:
+            findings = (scan_finding,) + findings
         summary = self._summarize(findings, material_check, materials)
 
         return KdReviewReport(
@@ -100,6 +106,25 @@ class KdReviewService:
             gost_checks=gost_checks,
             findings=findings,
             summary=summary,
+        )
+
+    @staticmethod
+    def _low_resolution_finding(drawing: DrawingModel) -> KdReviewFinding | None:
+        """Честное объяснение, почему поля не распознаны, когда причина —
+        качество файла, а не содержание чертежа."""
+        if not drawing.is_low_resolution_scan:
+            return None
+        return KdReviewFinding(
+            severity="warning",
+            message=(
+                f"Чертёж — скан с эффективным разрешением ≈{drawing.raster_dpi:.0f} точек "
+                "на дюйм. При таком разрешении строки основной надписи имеют высоту "
+                "порядка одного-двух пикселей и не читаются никаким средством "
+                "распознавания. Поля «Материал», «Заготовка», «Масштаб», «Масса» не "
+                "распознаны по причине качества исходного файла, а НЕ потому, что они "
+                "отсутствуют на чертеже. Требуется повторное сканирование с разрешением "
+                "не ниже 300 точек на дюйм либо исходный файл с текстовым слоем."
+            ),
         )
 
     def _run_gost_checks(self, drawing: DrawingModel) -> tuple[GostRequirementCheck, ...]:
@@ -246,22 +271,43 @@ class KdReviewService:
         return ReviewSummary(text=generated.text, generated_by=generated.generated_by)
 
     def _build_findings(
-        self, material_check, blank_check, tt_checks: tuple[TechnicalRequirementCheck, ...]
+        self,
+        material_check,
+        blank_check,
+        tt_checks: tuple[TechnicalRequirementCheck, ...],
+        drawing: DrawingModel | None = None,
     ) -> tuple[KdReviewFinding, ...]:
         findings: list[KdReviewFinding] = []
+        # На нечитаемом скане отсутствие материала — свойство ФАЙЛА, а не
+        # чертежа. Блокировать согласование в этом случае неверно:
+        # has_blocking_findings управляет решением главного технолога
+        # (см. approval_service.py), а материал на чертеже указан и корректен.
+        unreadable_scan = drawing is not None and drawing.is_low_resolution_scan
 
         if material_check.status == MatchStatus.NOT_FOUND:
-            findings.append(
-                KdReviewFinding(
-                    severity="blocking",
-                    message=(
-                        f"Материал '{material_check.material_from_drawing}' не найден "
-                        "в справочнике НСИ — доступность на предприятии не подтверждена. "
-                        "Обратная связь конструктору: проверить обозначение материала "
-                        "или согласовать замену на материал из действующей НСИ."
-                    ),
+            if unreadable_scan and not material_check.material_from_drawing:
+                findings.append(
+                    KdReviewFinding(
+                        severity="info",
+                        message=(
+                            "Материал не сверен с НСИ: он не прочитан из-за качества "
+                            "скана (см. предупреждение о разрешении выше). Загрузите "
+                            "чертёж в исходном качестве, чтобы выполнить сверку."
+                        ),
+                    )
                 )
-            )
+            else:
+                findings.append(
+                    KdReviewFinding(
+                        severity="blocking",
+                        message=(
+                            f"Материал '{material_check.material_from_drawing}' не найден "
+                            "в справочнике НСИ — доступность на предприятии не подтверждена. "
+                            "Обратная связь конструктору: проверить обозначение материала "
+                            "или согласовать замену на материал из действующей НСИ."
+                        ),
+                    )
+                )
         elif material_check.status == MatchStatus.PARTIAL_MATCH:
             findings.append(
                 KdReviewFinding(
@@ -275,15 +321,26 @@ class KdReviewService:
             )
 
         if blank_check.status == MatchStatus.NOT_FOUND:
-            findings.append(
-                KdReviewFinding(
-                    severity="warning",
-                    message=(
-                        f"Заготовка '{blank_check.blank_from_drawing}' не найдена "
-                        "в справочнике НСИ — типоразмер для закупки не подтверждён."
-                    ),
+            if unreadable_scan and not blank_check.blank_from_drawing:
+                findings.append(
+                    KdReviewFinding(
+                        severity="info",
+                        message=(
+                            "Заготовка не сверена с НСИ: она не прочитана из-за качества "
+                            "скана (см. предупреждение о разрешении выше)."
+                        ),
+                    )
                 )
-            )
+            else:
+                findings.append(
+                    KdReviewFinding(
+                        severity="warning",
+                        message=(
+                            f"Заготовка '{blank_check.blank_from_drawing}' не найдена "
+                            "в справочнике НСИ — типоразмер для закупки не подтверждён."
+                        ),
+                    )
+                )
         elif blank_check.status == MatchStatus.PARTIAL_MATCH:
             findings.append(
                 KdReviewFinding(

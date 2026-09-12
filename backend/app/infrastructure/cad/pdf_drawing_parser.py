@@ -33,7 +33,9 @@ class PdfDrawingParser:
             lines = self._extract_lines(page)
             raw_text = page.get_text()
             title_block = extract_title_block(lines, page.rect.width, page.rect.height)
-            requirements = extract_technical_requirements(raw_text)
+            requirements = extract_technical_requirements(
+                lines, page.rect.width, page.rect.height
+            )
             return DrawingModel(
                 file_path=str(file_path),
                 page_count=document.page_count,
