@@ -9,6 +9,7 @@ test_kd_review_endpoint.py). Разбор строк графы 3 проверя
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -261,3 +262,38 @@ class TestRequirementsOrder:
 
     def test_меньше_двух_известных_категорий_не_проверяется(self):
         assert self._check(["material"]) is None
+
+
+class TestStampFieldRecovery:
+    """Прицельное чтение граф основной надписи на чертеже без текстового слоя."""
+
+    def test_обозначение_собирается_поразрядно(self):
+        """Цифровые группы читаются устойчиво; спорные разряды помечаются
+        «?», а не заполняются произвольной цифрой."""
+        parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
+        designation = parsed.title_block.designation
+        assert designation is not None
+        assert designation.startswith("104759.001-")
+        assert designation.endswith(".111.020")
+
+    def test_масса_нормализуется_по_госту(self):
+        """На чертеже «82гр.» — граммы с точкой. ГОСТ Р 2.104 предписывает
+        указывать массу в килограммах без единицы измерения."""
+        parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
+        assert parsed.title_block.mass == "0,082"
+
+    def test_кириллическая_аббревиатура_не_подменяется_латиницей(self):
+        """Общий OCR читает «ОЧК» как «UYK»: латинские буквы визуально
+        неотличимы. Проход со списком только кириллических символов
+        возвращает верное написание."""
+        parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
+        part_name = parsed.title_block.part_name
+        assert part_name == "Кронштейн навески ОЧК задний"
+        assert not re.search(r"[A-Za-z]", part_name)
+
+    def test_обозначение_второго_чертежа_серии(self):
+        """Проверка на другом чертеже той же серии — распознавание не
+        подогнано под один файл."""
+        other = MVAU_ROOT / "МВАУ.104759.001-01.351.001 - Фальшпол.pdf"
+        parsed = AutoDrawingParser().parse(_require(other))
+        assert parsed.title_block.designation == "104759.001-01.351.001"

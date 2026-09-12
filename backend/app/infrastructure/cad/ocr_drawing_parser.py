@@ -35,6 +35,7 @@ import fitz
 import numpy as np
 import pytesseract
 
+import re
 from dataclasses import replace
 
 from app.domain.cad.drawing_model import DrawingModel
@@ -44,7 +45,14 @@ from app.infrastructure.cad.stamp_extraction import (
     extract_technical_requirements,
     extract_title_block,
 )
-from app.infrastructure.cad.stamp_ocr import recognize_material_row
+from app.infrastructure.cad.stamp_ocr import (
+    recognize_designation,
+    recognize_mass,
+    recognize_material_row,
+    recognize_scale,
+    refine_part_name,
+    _stamp_variants,
+)
 
 _RENDER_DPI = 400  # выше, чем для детекции видов — точность OCR зависит от разрешения
 # Векторный чертёж без текстового слоя рендерится крупнее: детализация
@@ -87,10 +95,9 @@ class OcrDrawingParser:
             title_block = extract_title_block(lines, page.rect.width, page.rect.height)
             # Общий проход по листу теряет мелкий шрифт основной надписи:
             # он рассчитан на разрозненный текст всей страницы, а штамп —
-            # плотная таблица. Если графа 3 так и не прочитана, пробуем
-            # прицельно, с увеличением и удалением линий разграфки.
-            if not title_block.material and not title_block.blank_designation:
-                title_block = self._recover_material_row(title_block, page)
+            # плотная таблица. Достраиваем графы прицельным разбором с
+            # увеличением и удалением линий разграфки.
+            title_block = self._recover_title_block(title_block, page)
             requirements = extract_technical_requirements(
                 lines,
                 page.rect.width,
@@ -113,23 +120,61 @@ class OcrDrawingParser:
             document.close()
 
     @staticmethod
-    def _recover_material_row(title_block, page: fitz.Page):
-        """Достраивает графу 3 прицельным распознаванием штампа.
+    def _recover_title_block(title_block, page: fitz.Page):
+        """Достраивает графы основной надписи прицельным разбором штампа.
 
-        Размеры, прочитанные со скана, НЕ используются как заготовка:
-        OCR технического шрифта путает цифры (на реальном чертеже «35»
-        читается как «55»), и подставить их в сверку типоразмеров значило
-        бы выдать домысел за факт. Марка и ссылка на стандарт устойчивы —
-        они и попадают в поле «Материал».
+        Заполняются только те графы, которые общий проход не прочитал:
+        если поле уже распознано, оно не перезаписывается.
+
+        Размеры материала, прочитанные со скана, НЕ используются как
+        заготовка: OCR технического шрифта путает цифры (на реальном
+        чертеже «35» читается как «55»), и подставить их в сверку
+        типоразмеров значило бы выдать домысел за факт. Марка и ссылка
+        на стандарт устойчивы — они и попадают в поле «Материал».
         """
-        row = recognize_material_row(page)
-        if not row:
-            return title_block
+        variants = _stamp_variants(page)
+        updates: dict[str, str] = {}
 
-        material = extract_material_from_blank_designation(row)
-        if not material:
-            return title_block
-        return replace(title_block, material=material)
+        if not title_block.material and not title_block.blank_designation:
+            row = recognize_material_row(page)
+            material = extract_material_from_blank_designation(row) if row else None
+            if material:
+                updates["material"] = material
+
+        # Обозначение КД по ГОСТ 2.201 содержит цифровые группы. Если
+        # общий проход выдал строку без единой цифры («Tete»), это заведомо
+        # не обозначение, и прицельный результат её заменяет.
+        # Обозначение по ГОСТ 2.201 — это группы цифр через точки и дефис.
+        # Короткая строка или строка без такой структуры («Tete», «12») —
+        # заведомо не обозначение, её заменяет прицельный результат.
+        current_designation = title_block.designation or ""
+        looks_like_designation = bool(
+            re.search(r"\d{3}[.\-]\d", current_designation)
+        )
+        if not looks_like_designation:
+            designation = recognize_designation(page, variants)
+            if designation:
+                updates["designation"] = designation
+
+        if not title_block.mass:
+            mass = recognize_mass(page, variants)
+            if mass:
+                updates["mass"] = mass
+
+        if not title_block.scale:
+            scale = recognize_scale(page, variants)
+            if scale:
+                updates["scale"] = scale
+
+        # Наименование найдено позиционно (это надёжнее, чем искать его
+        # по тексту среди фамилий и подписей соседних граф), но общий OCR
+        # мог подменить кириллицу латиницей в аббревиатуре.
+        if title_block.part_name:
+            refined = refine_part_name(page, title_block.part_name)
+            if refined != title_block.part_name:
+                updates["part_name"] = refined
+
+        return replace(title_block, **updates) if updates else title_block
 
     @staticmethod
     def _effective_raster_dpi(document: fitz.Document, page: fitz.Page) -> float | None:
