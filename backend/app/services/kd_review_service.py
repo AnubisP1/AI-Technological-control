@@ -15,6 +15,7 @@ from app.domain.kd_review.gost_checking import (
     check_plate_blank_sortament,
     check_scale,
     check_technical_requirements_numbering,
+    check_technical_requirements_order,
     check_title_block,
 )
 from app.domain.kd_review.gost_lookup_port import IGostLookup
@@ -30,6 +31,8 @@ from app.domain.kd_review.review_model import (
     TechnicalRequirementCheck,
 )
 from app.domain.kd_review.text_generator_port import ITextGenerator
+from app.domain.kd_review.tt_template_matching import match_typical_requirement
+from app.domain.kd_review.tt_template_port import ITypicalRequirementLookup
 from app.domain.kd_review.tt_categories import classify_requirement
 from app.infrastructure.llm.template_text_generator import TemplateTextGenerator
 
@@ -42,6 +45,7 @@ class KdReviewService:
         nsi_lookup: INsiLookup,
         text_generator: ITextGenerator | None = None,
         gost_lookup: IGostLookup | None = None,
+        typical_requirement_lookup: ITypicalRequirementLookup | None = None,
     ) -> None:
         self._nsi_lookup = nsi_lookup
         self._template_text_generator = TemplateTextGenerator()
@@ -53,6 +57,10 @@ class KdReviewService:
         # раздел проверок оформления по ГОСТ остаётся ПУСТЫМ, а не
         # "пройденным" — отсутствие проверки не выдаётся за её успех.
         self._gost_lookup = gost_lookup
+        # Справочник типовых формулировок ТТ (ОСТ 1 02504-84). Без него
+        # раздел сверки формулировок просто отсутствует, а не считается
+        # пройденным — отсутствие проверки не выдаётся за её успех.
+        self._typical_requirement_lookup = typical_requirement_lookup
 
     def review(self, drawing: DrawingModel | None) -> KdReviewReport:
         if drawing is None:
@@ -77,17 +85,14 @@ class KdReviewService:
         material_check = match_material(drawing.title_block.material, materials)
         blank_check = match_blank(drawing.title_block.blank_designation, blanks)
 
-        tt_checks = tuple(
-            TechnicalRequirementCheck(
-                number=req.number,
-                text=req.text,
-                is_recognized=classify_requirement(req.text) is not None,
-                category=classify_requirement(req.text),
-            )
-            for req in drawing.technical_requirements
-        )
+        tt_checks = self._check_technical_requirements(drawing)
 
         gost_checks = self._run_gost_checks(drawing)
+        # Порядок изложения ТТ проверяется по уже определённым категориям
+        # пунктов, поэтому идёт после _check_technical_requirements.
+        order_check = check_technical_requirements_order(tt_checks)
+        if order_check is not None:
+            gost_checks = gost_checks + (order_check,)
 
         findings = self._build_findings(material_check, blank_check, tt_checks, drawing)
         findings = findings + self._gost_findings(gost_checks)
@@ -107,6 +112,50 @@ class KdReviewService:
             findings=findings,
             summary=summary,
         )
+
+    def _check_technical_requirements(
+        self, drawing: DrawingModel
+    ) -> tuple[TechnicalRequirementCheck, ...]:
+        """Категория пункта ТТ плюс сверка формулировки с типовой.
+
+        Категория (tt_categories) отвечает на вопрос «о чём этот пункт»,
+        сверка с ОСТ 1 02504-84 — «написан ли он стандартной
+        формулировкой». Это разные вещи: пункт может быть понятной
+        категории, но сформулирован произвольно.
+        """
+        templates: tuple = ()
+        if self._typical_requirement_lookup is not None:
+            try:
+                templates = self._typical_requirement_lookup.find_typical_requirements()
+            except Exception:
+                # Недоступный справочник не должен ронять отчёт: сверка с
+                # НСИ и проверки ГОСТ остаются валидными.
+                logger.warning(
+                    "Справочник типовых формулировок ТТ недоступен", exc_info=True
+                )
+
+        checks: list[TechnicalRequirementCheck] = []
+        for requirement in drawing.technical_requirements:
+            category = classify_requirement(requirement.text)
+            template = (
+                match_typical_requirement(requirement, templates) if templates else None
+            )
+            checks.append(
+                TechnicalRequirementCheck(
+                    number=requirement.number,
+                    text=requirement.text,
+                    is_recognized=category is not None,
+                    category=category,
+                    typical_template_code=template.code if template else None,
+                    typical_formulation=(
+                        template.formulation_template if template else None
+                    ),
+                    typical_reference_standard=(
+                        template.reference_standard if template else None
+                    ),
+                )
+            )
+        return tuple(checks)
 
     @staticmethod
     def _low_resolution_finding(drawing: DrawingModel) -> KdReviewFinding | None:

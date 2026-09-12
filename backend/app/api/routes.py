@@ -27,6 +27,7 @@ from app.infrastructure.db.sqlite_gost_lookup import SqliteGostLookup
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
 from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanningLookup
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
+from app.infrastructure.db.sqlite_tt_template_lookup import SqliteTypicalRequirementLookup
 from app.infrastructure.llm.chained_chat_responder import ChainedChatResponder
 from app.infrastructure.llm.chained_text_generator import ChainedTextGenerator
 from app.infrastructure.llm.qwen_chat_responder import QwenChatResponder
@@ -264,6 +265,10 @@ def _review_to_dict(report: KdReviewReport) -> dict:
                 "text": tt.text,
                 "is_recognized": tt.is_recognized,
                 "category": tt.category,
+                # Сверка с типовой формулировкой ОСТ 1 02504-84.
+                "typical_template_code": tt.typical_template_code,
+                "typical_formulation": tt.typical_formulation,
+                "typical_reference_standard": tt.typical_reference_standard,
             }
             for tt in report.technical_requirement_checks
         ],
@@ -412,6 +417,7 @@ async def review_kd(drawing: UploadFile) -> dict:
         nsi_lookup=SqliteNsiLookup(metal_db_path),
         text_generator=_build_text_generator(),
         gost_lookup=SqliteGostLookup(_get_gost_db_path()),
+        typical_requirement_lookup=SqliteTypicalRequirementLookup(metal_db_path),
     )
     # Через run_heavy: с локальным Qwen (Фаза 18) _summarize() может
     # выполнять несколько секунд чистого CPU-инференса — блокировать им
@@ -436,6 +442,7 @@ async def review_kd_pdf(drawing: UploadFile) -> Response:
         nsi_lookup=SqliteNsiLookup(metal_db_path),
         text_generator=_build_text_generator(),
         gost_lookup=SqliteGostLookup(_get_gost_db_path()),
+        typical_requirement_lookup=SqliteTypicalRequirementLookup(metal_db_path),
     )
     report = await run_heavy(review_service.review, drawing_model)
 

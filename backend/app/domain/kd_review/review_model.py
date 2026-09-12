@@ -52,6 +52,12 @@ class TechnicalRequirementCheck:
     is_recognized: bool  # удалось ли сопоставить пункт с известной категорией ТТ
     category: str | None  # напр. 'hardness', 'coating', 'roughness' — см. tt_categories.py
     note: str = ""
+    # Сверка формулировки с типовой по ОСТ 1 02504-84 (табл. 11).
+    # None означает «типовая формулировка не найдена» — это НЕ нарушение:
+    # стандарт не запрещает формулировать иначе, если требование понятно.
+    typical_template_code: str | None = None
+    typical_formulation: str | None = None
+    typical_reference_standard: str | None = None
 
 
 class GostCheckStatus(str, Enum):

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from app.domain.cad.drawing_model import DrawingModel, TitleBlockFields
-from app.domain.kd_review.review_model import KdReviewFinding
+from app.domain.kd_review.review_model import GostCheckStatus, KdReviewFinding
 from app.domain.kd_review.tt_categories import classify_requirement
 from app.domain.material_text import (
     extract_material_from_blank_designation,
@@ -24,7 +24,10 @@ from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
 from app.infrastructure.cad.pdf_drawing_parser import PdfDrawingParser
 
 MVAU_ROOT = Path("/Users/bdd/Documents/Работа/Подписанная КД (1)")
-BRACKET_SCAN = MVAU_ROOT / "МВАУ.104759.001-01.111.020.pdf"
+# Этот чертёж пользователь положил в общий каталог фикстур проекта.
+BRACKET_SCAN = (
+    Path(__file__).resolve().parents[3] / "КД для тестов" / "МВАУ.104759.001-01.111.020.pdf"
+)
 SHEET_DETAIL = MVAU_ROOT / "МВАУ.104759.001-01.172.009_Закладная.pdf"
 ASSEMBLY = MVAU_ROOT / "МВАУ.104759.001-01.100.000 СБ_Планер.pdf"
 SPECIFICATION = MVAU_ROOT / "МВАУ.104759.001-01.131.000 СП.pdf"
@@ -122,11 +125,22 @@ class TestMarkingCategory:
 
 
 class TestLowResolutionScan:
-    def test_скан_низкого_разрешения_определяется(self):
+    def test_векторный_чертёж_без_текста_не_считается_плохим_сканом(self):
+        """Регрессия: этот чертёж — ВЕКТОРНЫЙ, текстового слоя нет, но
+        качество идеальное. Внутри есть маленькая картинка подписи (6%
+        листа); считать по ней разрешение всего листа неверно — раньше
+        из-за этого чертёж объявлялся нечитаемым сканом 46 DPI."""
         parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
-        assert parsed.source_kind == "ocr"
-        assert parsed.raster_dpi is not None and parsed.raster_dpi < 60
-        assert parsed.is_low_resolution_scan is True
+        assert parsed.source_kind == "ocr"  # текстового слоя действительно нет
+        assert parsed.raster_dpi is None  # но лист не растровый
+        assert parsed.is_low_resolution_scan is False
+
+    def test_материал_читается_прицельным_разбором_штампа(self):
+        """Общий проход по листу теряет мелкий шрифт основной надписи;
+        отдельный проход по штампу с увеличением и удалением линий
+        разграфки её читает."""
+        parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
+        assert parsed.title_block.material == "Д16 ГОСТ 17232-2023"
 
     def test_чертёж_с_текстовым_слоем_не_помечается_сканом(self):
         parsed = PdfDrawingParser().parse(_require(SHEET_DETAIL))
@@ -160,3 +174,90 @@ class TestLowResolutionScan:
         first: KdReviewFinding = report.findings[0]
         assert first.severity == "warning"
         assert "разрешением" in first.message
+
+
+class TestTypicalRequirementMatching:
+    """Сверка формулировок ТТ с типовыми по ОСТ 1 02504-84."""
+
+    def _templates(self, tmp_path: Path):
+        from app.infrastructure.db.nsi_db import NsiDatabase, build_database
+        from app.infrastructure.db.sqlite_tt_template_lookup import (
+            SqliteTypicalRequirementLookup,
+        )
+
+        db = tmp_path / "metal.sqlite"
+        build_database(NsiDatabase.METAL, db)
+        return SqliteTypicalRequirementLookup(db).find_typical_requirements()
+
+    def test_формулировка_с_уточнением_совпадает_с_типовой(self, tmp_path: Path):
+        """Конструктор дописал «допуски формы и расположения поверхностей»
+        к типовой формулировке — это по-прежнему она."""
+        from app.domain.cad.drawing_model import TechnicalRequirement
+        from app.domain.kd_review.tt_template_matching import match_typical_requirement
+
+        requirement = TechnicalRequirement(
+            number=1,
+            text=(
+                "Неуказанные предельные отклонения размеров, допуски формы и "
+                "расположения поверхностей по ОСТ 1 00022-80"
+            ),
+        )
+        match = match_typical_requirement(requirement, self._templates(tmp_path))
+        assert match is not None
+        assert match.code == "UNSPEC_TOLERANCE"
+        assert match.reference_standard == "ОСТ 1 00022-80"
+
+    def test_клеймение_совпадает_с_типовой(self, tmp_path: Path):
+        from app.domain.cad.drawing_model import TechnicalRequirement
+        from app.domain.kd_review.tt_template_matching import match_typical_requirement
+
+        match = match_typical_requirement(
+            TechnicalRequirement(number=6, text="Клеймить К, маркировать Ч на бирке"),
+            self._templates(tmp_path),
+        )
+        assert match is not None and match.code == "MARKING_STAMPING"
+
+    def test_посторонний_пункт_не_подгоняется_под_типовую(self, tmp_path: Path):
+        """Отсутствие совпадения — нормальный результат, а не ошибка:
+        стандарт не запрещает формулировать своими словами."""
+        from app.domain.cad.drawing_model import TechnicalRequirement
+        from app.domain.kd_review.tt_template_matching import match_typical_requirement
+
+        match = match_typical_requirement(
+            TechnicalRequirement(number=2, text="Фюзеляж поз. 2 крепить к крылу поз. 1"),
+            self._templates(tmp_path),
+        )
+        assert match is None
+
+
+class TestRequirementsOrder:
+    """Последовательность изложения ТТ (ГОСТ Р 2.316-2023, п. 6.5)."""
+
+    def _check(self, categories: list[str]):
+        from app.domain.kd_review.gost_checking import (
+            check_technical_requirements_order,
+        )
+        from app.domain.kd_review.review_model import TechnicalRequirementCheck
+
+        checks = tuple(
+            TechnicalRequirementCheck(
+                number=i + 1, text=f"пункт {i + 1}", is_recognized=True, category=c
+            )
+            for i, c in enumerate(categories)
+        )
+        return check_technical_requirements_order(checks)
+
+    def test_правильный_порядок_проходит(self):
+        result = self._check(["material", "heat_treatment", "coating", "marking"])
+        assert result is not None
+        assert result.status is GostCheckStatus.PASSED
+
+    def test_нарушенный_порядок_на_решение_технолога(self):
+        """п. 6.5 требует последовательности «по возможности» — это
+        рекомендация, поэтому NEEDS_REVIEW, а не VIOLATED."""
+        result = self._check(["marking", "material"])
+        assert result is not None
+        assert result.status is GostCheckStatus.NEEDS_REVIEW
+
+    def test_меньше_двух_известных_категорий_не_проверяется(self):
+        assert self._check(["material"]) is None

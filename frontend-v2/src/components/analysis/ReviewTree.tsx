@@ -140,7 +140,12 @@ export function ReviewTree({ review }: { review: KdReviewReport }) {
               key={tt.number}
               label={`п.${tt.number}: ${tt.text}`}
               status={tt.is_recognized ? 'matched' : 'partial_match'}
-              note={`категория: ${tt.category || 'не распознана'}`}
+              note={[
+                `категория: ${tt.category || 'не распознана'}`,
+                tt.typical_formulation
+                  ? `типовая формулировка ОСТ 1 02504-84: «${tt.typical_formulation}»`
+                  : 'типовая формулировка по ОСТ 1 02504-84 не найдена',
+              ].join(' · ')}
             />
           ))}
         </TreeNode>

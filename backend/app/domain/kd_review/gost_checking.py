@@ -384,3 +384,81 @@ def check_plate_blank_sortament(
             "согласуйте другой вид проката."
         ),
     )
+
+
+# Последовательность изложения ТТ по ГОСТ Р 2.316-2023, п. 6.5 —
+# в терминах категорий из tt_categories.py. Порядок в кортеже = порядок
+# в стандарте. Категории, для которых стандарт не задаёт места
+# (process_sequence, inspection_testing и др.), в проверку не входят:
+# домысливать за стандарт нельзя.
+_TT_ORDER_BY_CATEGORY: tuple[tuple[str, str], ...] = (
+    ("material", "требования к материалу"),
+    ("heat_treatment", "термическая обработка и свойства материала"),
+    ("chemical_thermal_treatment", "химико-термическая обработка"),
+    ("unspecified_tolerances", "размеры и предельные отклонения"),
+    ("form_position_tolerance", "геометрические допуски"),
+    ("roughness", "качество поверхностей"),
+    ("coating", "указания об отделке и покрытии"),
+    ("marking", "указания о маркировании и клеймении"),
+)
+
+
+def check_technical_requirements_order(
+    checks: tuple, 
+) -> GostRequirementCheck | None:
+    """Последовательность изложения пунктов ТТ (ГОСТ Р 2.316, п. 6.5).
+
+    Стандарт требует группировать однородные требования и излагать их
+    «по возможности в следующей последовательности» — формулировка
+    рекомендательная, поэтому нарушение порядка даёт NEEDS_REVIEW, а не
+    VIOLATED: расположить иначе стандарт не запрещает.
+
+    Проверяются только те пункты, чья категория присутствует в перечне
+    стандарта; остальные пропускаются, не сдвигая порядок.
+    """
+    order_index = {code: i for i, (code, _) in enumerate(_TT_ORDER_BY_CATEGORY)}
+    titles = dict(_TT_ORDER_BY_CATEGORY)
+
+    sequence = [
+        (check.number, check.category)
+        for check in checks
+        if check.category in order_index
+    ]
+    if len(sequence) < 2:
+        # Проверять последовательность не на чем.
+        return None
+
+    violations: list[str] = []
+    for (prev_number, prev_category), (number, category) in zip(sequence, sequence[1:]):
+        if order_index[category] < order_index[prev_category]:
+            violations.append(
+                f"п. {number} ({titles[category]}) стоит после "
+                f"п. {prev_number} ({titles[prev_category]})"
+            )
+
+    actual = " → ".join(f"{n}:{titles[c]}" for n, c in sequence)
+    if not violations:
+        return GostRequirementCheck(
+            standard_designation="ГОСТ Р 2.316-2023",
+            clause_number="6.5",
+            parameter_name="последовательность изложения технических требований",
+            status=GostCheckStatus.PASSED,
+            actual_value=actual,
+            expected="; ".join(title for _, title in _TT_ORDER_BY_CATEGORY),
+            note="Порядок групп требований соответствует рекомендованному стандартом.",
+        )
+
+    return GostRequirementCheck(
+        standard_designation="ГОСТ Р 2.316-2023",
+        clause_number="6.5",
+        parameter_name="последовательность изложения технических требований",
+        status=GostCheckStatus.NEEDS_REVIEW,
+        actual_value=actual,
+        expected="; ".join(title for _, title in _TT_ORDER_BY_CATEGORY),
+        note=(
+            "Порядок групп требований отличается от рекомендованного: "
+            + "; ".join(violations)
+            + ". Пункт 6.5 требует такой последовательности «по возможности», "
+            "поэтому это не нарушение, а место для решения технолога."
+        ),
+    )

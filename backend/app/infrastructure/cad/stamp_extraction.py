@@ -103,7 +103,11 @@ def extract_title_block(lines: list[Line], page_width: float, page_height: float
 
 
 def extract_technical_requirements(
-    lines: list[Line], page_width: float, page_height: float
+    lines: list[Line],
+    page_width: float,
+    page_height: float,
+    *,
+    require_first_item: bool = True,
 ) -> tuple[TechnicalRequirement, ...]:
     """Технические требования — пронумерованный список над основной
     надписью (см. dev/QUESTIONS.md №4).
@@ -119,6 +123,11 @@ def extract_technical_requirements(
     check_technical_requirements_numbering(). Молча пропускать такой
     пункт значило бы и скрыть его от технолога, и подавить ту самую
     находку, которая должна о нём сообщить.
+
+    require_first_item=False снимает требование «блок начинается с
+    пункта 1» — нужно для OCR-пути: на скане первые пункты могут просто
+    не распознаться, и тогда строгое правило отбросило бы весь блок
+    вместе с реально прочитанными пунктами.
     """
     x_threshold = page_width * TT_X_FRACTION
     y_limit = page_height * TT_STAMP_Y_FRACTION
@@ -158,7 +167,7 @@ def extract_technical_requirements(
             # первой встреченной единицы; далее номера принимаются как
             # есть (разрывы — предмет проверки ГОСТ Р 2.316 п. 6.6,
             # см. докстроку).
-            if not requirements and number != 1:
+            if require_first_item and not requirements and number != 1:
                 continue
             requirements.append(
                 TechnicalRequirement(number=number, text=match.group(2).strip())

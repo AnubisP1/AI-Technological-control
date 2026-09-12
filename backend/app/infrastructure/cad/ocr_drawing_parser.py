@@ -35,14 +35,26 @@ import fitz
 import numpy as np
 import pytesseract
 
+from dataclasses import replace
+
 from app.domain.cad.drawing_model import DrawingModel
+from app.domain.material_text import extract_material_from_blank_designation
 from app.infrastructure.cad.stamp_extraction import (
     Line,
     extract_technical_requirements,
     extract_title_block,
 )
+from app.infrastructure.cad.stamp_ocr import recognize_material_row
 
 _RENDER_DPI = 400  # выше, чем для детекции видов — точность OCR зависит от разрешения
+# Векторный чертёж без текстового слоя рендерится крупнее: детализация
+# ничем не ограничена, а мелкий шрифт штампа при 400 DPI читается плохо.
+# Проверено на реальном чертеже МВАУ: при 400 DPI строка материала не
+# распознаётся, при ~600 DPI читается «Плита Д16 АТ … ГОСТ 17232-2023».
+_VECTOR_RENDER_DPI = 600
+# Доля листа, начиная с которой растр считается сканом самого листа, а не
+# вставленной картинкой (подпись, логотип занимают единицы процентов).
+_SCAN_COVERAGE_FRACTION = 0.5
 _TESSERACT_LANG = "rus+eng"  # смешение кириллицы и латиницы в технической документации
 # PSM 11 (разрозненный текст, без предположения об ориентации/структуре
 # страницы) даёт больше распознанных слов на чертеже, чем PSM 6 (единый
@@ -59,7 +71,11 @@ class OcrDrawingParser:
         document = fitz.open(file_path)
         try:
             page = document[0]
-            zoom = _RENDER_DPI / 72
+            raster_dpi = self._effective_raster_dpi(document, page)
+            # Для скана поднимать зум выше исходного разрешения бесполезно —
+            # деталей это не добавит; для вектора, наоборот, полезно.
+            render_dpi = _RENDER_DPI if raster_dpi is not None else _VECTOR_RENDER_DPI
+            zoom = render_dpi / 72
             pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), colorspace=fitz.csGRAY)
             gray = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(
                 pixmap.height, pixmap.width
@@ -69,8 +85,19 @@ class OcrDrawingParser:
             lines = self._ocr_lines(binary, zoom)
             raw_text = "\n".join(ln[4] for ln in lines)
             title_block = extract_title_block(lines, page.rect.width, page.rect.height)
+            # Общий проход по листу теряет мелкий шрифт основной надписи:
+            # он рассчитан на разрозненный текст всей страницы, а штамп —
+            # плотная таблица. Если графа 3 так и не прочитана, пробуем
+            # прицельно, с увеличением и удалением линий разграфки.
+            if not title_block.material and not title_block.blank_designation:
+                title_block = self._recover_material_row(title_block, page)
             requirements = extract_technical_requirements(
-                lines, page.rect.width, page.rect.height
+                lines,
+                page.rect.width,
+                page.rect.height,
+                # На скане первые пункты могут не распознаться — не повод
+                # терять остальные (см. докстроку функции).
+                require_first_item=False,
             )
 
             return DrawingModel(
@@ -80,41 +107,72 @@ class OcrDrawingParser:
                 technical_requirements=requirements,
                 raw_text=raw_text,
                 source_kind="ocr",
-                raster_dpi=self._effective_raster_dpi(document, page),
+                raster_dpi=raster_dpi,
             )
         finally:
             document.close()
 
     @staticmethod
-    def _effective_raster_dpi(document: fitz.Document, page: fitz.Page) -> float | None:
-        """Реальное разрешение вложенного растра относительно размера листа.
+    def _recover_material_row(title_block, page: fitz.Page):
+        """Достраивает графу 3 прицельным распознаванием штампа.
 
-        Рендер страницы можно заказать хоть в 800 DPI, но детализации это
-        не добавит: она ограничена тем, с каким разрешением лист был
-        отсканирован. Берётся самое большое изображение страницы (мелкие
-        — это логотипы и штампы подписей) и минимум из горизонтали и
-        вертикали: строки основной надписи горизонтальны, поэтому
-        ограничивает их именно вертикальное разрешение.
+        Размеры, прочитанные со скана, НЕ используются как заготовка:
+        OCR технического шрифта путает цифры (на реальном чертеже «35»
+        читается как «55»), и подставить их в сверку типоразмеров значило
+        бы выдать домысел за факт. Марка и ссылка на стандарт устойчивы —
+        они и попадают в поле «Материал».
         """
-        images = page.get_images(full=True)
-        if not images:
+        row = recognize_material_row(page)
+        if not row:
+            return title_block
+
+        material = extract_material_from_blank_designation(row)
+        if not material:
+            return title_block
+        return replace(title_block, material=material)
+
+    @staticmethod
+    def _effective_raster_dpi(document: fitz.Document, page: fitz.Page) -> float | None:
+        """Разрешение растра, которым нарисован ЛИСТ, если чертёж — скан.
+
+        Возвращает None для ВЕКТОРНЫХ чертежей без текстового слоя: там
+        детализация не ограничена ничем, лист можно отрендерить в любом
+        разрешении, и говорить о «DPI скана» бессмысленно.
+
+        Ключевой момент — доля листа, которую растр реально закрывает.
+        В векторном чертеже тоже бывают вставленные картинки (подпись,
+        логотип на 5-6% листа): считать по ним DPI всего листа неверно —
+        именно эта ошибка приводила к тому, что нормальные векторные
+        чертежи объявлялись нечитаемыми сканами.
+        """
+        page_area = page.rect.width * page.rect.height
+        if page_area <= 0:
             return None
 
         best_dpi: float | None = None
-        for image in images:
+        for image in page.get_images(full=True):
+            xref = image[0]
+            placements = page.get_image_rects(xref)
+            covered = max(
+                ((r.width * r.height) / page_area for r in placements), default=0.0
+            )
+            # Растр считается «сканом листа», только если он закрывает
+            # основную часть страницы.
+            if covered < _SCAN_COVERAGE_FRACTION:
+                continue
             try:
-                pixmap = fitz.Pixmap(document, image[0])
+                pixmap = fitz.Pixmap(document, xref)
             except Exception:
                 # Битый или неподдерживаемый объект изображения — не повод
                 # ронять разбор чертежа целиком.
                 continue
-            if page.rect.width <= 0 or page.rect.height <= 0:
-                continue
-            dpi_x = pixmap.width * 72 / page.rect.width
-            dpi_y = pixmap.height * 72 / page.rect.height
-            dpi = min(dpi_x, dpi_y)
-            if best_dpi is None or dpi > best_dpi:
-                best_dpi = dpi
+            for rect in placements:
+                if rect.width <= 0 or rect.height <= 0:
+                    continue
+                # DPI относительно РАЗМЕЩЕНИЯ растра, а не всего листа.
+                dpi = min(pixmap.width * 72 / rect.width, pixmap.height * 72 / rect.height)
+                if best_dpi is None or dpi > best_dpi:
+                    best_dpi = dpi
         return best_dpi
 
     def _ocr_lines(self, binary_image: np.ndarray, zoom: float) -> list[Line]:

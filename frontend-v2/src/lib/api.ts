@@ -109,6 +109,14 @@ export interface TechnicalRequirementCheck {
   text: string
   is_recognized: boolean
   category: string | null
+  /**
+   * Сверка формулировки с типовой по ОСТ 1 02504-84 (табл. 11).
+   * null — типовая формулировка не найдена; это не нарушение:
+   * стандарт не запрещает формулировать иначе.
+   */
+  typical_template_code?: string | null
+  typical_formulation?: string | null
+  typical_reference_standard?: string | null
 }
 
 export interface Finding {
