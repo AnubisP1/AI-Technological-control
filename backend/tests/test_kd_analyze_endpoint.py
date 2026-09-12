@@ -72,3 +72,23 @@ def test_analyze_kd_with_no_files_returns_empty_result():
         "view_detection": None,
         "step_model": None,
     }
+
+
+def test_analyze_kd_with_only_drawing_for_metal_parts():
+    """Фаза 23: чертёж можно отправить на проверку без STEP-модели —
+    разбор основной надписи и ТТ от геометрии не зависит. step_model в
+    ответе при этом None, а не выдуманная заглушка: расчёт УП на
+    «Производстве» без модели честно недоступен."""
+    drawing_path = _require(VAL_PDF)
+
+    with drawing_path.open("rb") as drawing_file:
+        response = client.post(
+            "/kd/analyze",
+            files={"drawing": (drawing_path.name, drawing_file, "application/pdf")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["step_model"] is None
+    assert body["drawing"] is not None
+    assert body["drawing"]["title_block"]["part_name"] == "Вал"

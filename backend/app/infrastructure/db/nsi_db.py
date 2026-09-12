@@ -19,6 +19,12 @@ SCHEMA_ROOT = Path(__file__).resolve().parent / "schema_sqlite"
 class NsiDatabase(str, Enum):
     METAL = "metal"
     ADDITIVE = "additive"
+    # Нормативные требования ГОСТ ЕСКД к оформлению КД. Отдельная, ТРЕТЬЯ
+    # база: металл и аддитив — справочники ресурсов предприятия и не
+    # связаны между собой по замыслу оригинальных схем, а ГОСТ на
+    # оформление чертежа применим к обеим ветвям одинаково, поэтому
+    # дублировать его в двух схемах было бы неверно (см. БД НСИ/ГОСТ/README.md).
+    GOST = "gost"
 
 
 # Порядок seed-файлов важен и не совпадает с алфавитным: seed_data.sql
@@ -36,6 +42,23 @@ _SEED_FILE_ORDER: dict[NsiDatabase, list[str]] = {
         "seed_application_rules.sql",
         "seed_print_quality_standards.sql",
         "seed_print_speed_reference.sql",
+    ],
+    # Сначала сами стандарты, затем пункты по каждому, и последним —
+    # связи между пунктами РАЗНЫХ стандартов: такая связь ссылается на
+    # целевой пункт по id, и если вставить её раньше, чем размечен
+    # целевой стандарт, INSERT ... SELECT молча вставит 0 строк без
+    # ошибки (ровно эта ошибка уже была допущена при наполнении базы,
+    # см. шапку zz_seed_cross_references.sql).
+    NsiDatabase.GOST: [
+        "seed_gost_standards.sql",
+        "seed_gost_2104_title_block.sql",
+        "seed_gost_2109_clauses.sql",
+        "seed_gost_2302_clauses.sql",
+        "seed_gost_2305_clauses.sql",
+        "seed_gost_2307_clauses.sql",
+        "seed_gost_2316_clauses.sql",
+        "seed_gost_25142_clauses.sql",
+        "zz_seed_cross_references.sql",
     ],
 }
 

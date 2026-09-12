@@ -18,12 +18,14 @@ def test_ask_assistant_endpoint_returns_real_material_match():
 
 def test_ask_assistant_endpoint_handles_no_matches_without_hallucinating():
     # Точная формулировка отличается между шаблоном ("не найдено") и LLM
-    # (может сказать "не найдена"/"не обнаружено" и т.д.) — проверяем сам
-    # факт честного отказа (общий корень "найд"), не буквальную фразу.
+    # (живая модель пишет "не найдена", "не удалось найти", "не обнаружено"
+    # — корня "найд" в форме "найти" нет, на чём тест ранее флейкал) —
+    # проверяем сам факт честного отказа по любой из этих основ.
     response = client.post("/assistant/chat", json={"question": "зюзюкин Ы-9000 кварзоплетень"})
     assert response.status_code == 200
     body = response.json()
-    assert "найд" in body["text"].lower()
+    text = body["text"].lower()
+    assert any(root in text for root in ("найд", "найти", "обнаруж", "отсутств"))
 
 
 def test_ask_assistant_endpoint_rejects_missing_question_field():

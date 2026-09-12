@@ -38,3 +38,34 @@ def test_review_endpoint_returns_material_and_blank_checks():
     # иначе template) — оба пути обязаны дать непустой текст резюме.
     assert body["summary"]["generated_by"] in ("template", "llm")
     assert body["summary"]["text"]
+
+
+def test_review_endpoint_returns_gost_checks():
+    """Фаза 23: проверки оформления по ГОСТ ЕСКД (база `БД НСИ/ГОСТ/`)
+    выполняются в том же запросе, что и сверка с НСИ, и по одному
+    чертежу — без 3D-модели."""
+    drawing_path = _require(VAL_PDF)
+
+    with drawing_path.open("rb") as drawing_file:
+        response = client.post(
+            "/kd/review",
+            files={"drawing": (drawing_path.name, drawing_file, "application/pdf")},
+        )
+
+    assert response.status_code == 200
+    gost_checks = response.json()["gost_checks"]
+    assert gost_checks, "раздел проверок ГОСТ не должен быть пустым при подключённой базе"
+
+    allowed_statuses = {"passed", "violated", "needs_review", "not_applicable"}
+    for check in gost_checks:
+        assert check["status"] in allowed_statuses
+        assert check["standard_designation"].startswith("ГОСТ")
+        assert check["clause_number"]
+        assert check["parameter_name"]
+
+    checked = {(c["standard_designation"], c["clause_number"]) for c in gost_checks}
+    # Масштаб «1:2» из основной надписи этого чертежа сверяется с рядом
+    # ГОСТ 2.302 — требование берётся из базы, не зашито в коде.
+    assert any(std.startswith("ГОСТ 2.302") for std, _ in checked)
+    # Графы основной надписи — из таблицы 1 ГОСТ Р 2.104.
+    assert any(clause.startswith("графа") for _, clause in checked)

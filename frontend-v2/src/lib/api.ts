@@ -110,10 +110,27 @@ export interface Finding {
   message: string
 }
 
+/**
+ * Проверка оформления чертежа по конкретному пункту ГОСТ ЕСКД
+ * (Фаза 23) — источник требований — база `БД НСИ/ГОСТ/`.
+ * needs_review отличается от not_applicable намеренно: первое —
+ * место для решения технолога, второе — требование не применимо.
+ */
+export interface GostRequirementCheck {
+  standard_designation: string
+  clause_number: string
+  parameter_name: string
+  status: 'passed' | 'violated' | 'needs_review' | 'not_applicable'
+  actual_value: string | null
+  expected: string | null
+  note: string
+}
+
 export interface KdReviewReport {
   material_check: MaterialCheck | null
   blank_check: BlankCheck | null
   technical_requirement_checks: TechnicalRequirementCheck[]
+  gost_checks: GostRequirementCheck[]
   findings: Finding[]
   has_blocking_findings: boolean
   summary: { text: string; generated_by: 'llm' | 'template' } | null

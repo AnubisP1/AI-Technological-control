@@ -23,6 +23,7 @@ from app.infrastructure.cad.regex_step_parser import RegexStepParser
 from app.infrastructure.cad.step_mesh_exporter import export_step_to_stl
 from app.infrastructure.config import get_settings
 from app.infrastructure.db.nsi_db import NsiDatabase, build_database, connect
+from app.infrastructure.db.sqlite_gost_lookup import SqliteGostLookup
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
 from app.infrastructure.db.sqlite_print_planning_lookup import SqlitePrintPlanningLookup
 from app.infrastructure.db.sqlite_process_planning_lookup import SqliteProcessPlanningLookup
@@ -86,6 +87,17 @@ def _get_additive_db_path() -> Path:
     db_path = settings.database_dir / "additive.sqlite"
     if not db_path.exists():
         build_database(NsiDatabase.ADDITIVE, db_path)
+    return db_path
+
+
+def _get_gost_db_path() -> Path:
+    """Аналог _get_metal_db_path() для базы нормативных требований ГОСТ
+    (проверка оформления КД, Модуль 1.2). Общая для металла и пластика:
+    ГОСТ на оформление чертежа не зависит от способа изготовления."""
+    settings = get_settings()
+    db_path = settings.database_dir / "gost.sqlite"
+    if not db_path.exists():
+        build_database(NsiDatabase.GOST, db_path)
     return db_path
 
 
@@ -253,6 +265,18 @@ def _review_to_dict(report: KdReviewReport) -> dict:
             }
             for tt in report.technical_requirement_checks
         ],
+        "gost_checks": [
+            {
+                "standard_designation": gc.standard_designation,
+                "clause_number": gc.clause_number,
+                "parameter_name": gc.parameter_name,
+                "status": gc.status.value,
+                "actual_value": gc.actual_value,
+                "expected": gc.expected,
+                "note": gc.note,
+            }
+            for gc in report.gost_checks
+        ],
         "findings": [
             {"severity": f.severity, "message": f.message} for f in report.findings
         ],
@@ -397,7 +421,9 @@ async def review_kd(drawing: UploadFile) -> dict:
 
     metal_db_path = _get_metal_db_path()
     review_service = KdReviewService(
-        nsi_lookup=SqliteNsiLookup(metal_db_path), text_generator=_build_text_generator()
+        nsi_lookup=SqliteNsiLookup(metal_db_path),
+        text_generator=_build_text_generator(),
+        gost_lookup=SqliteGostLookup(_get_gost_db_path()),
     )
     # Через run_heavy: с локальным Qwen (Фаза 18) _summarize() может
     # выполнять несколько секунд чистого CPU-инференса — блокировать им
@@ -419,7 +445,9 @@ async def review_kd_pdf(drawing: UploadFile) -> Response:
 
     metal_db_path = _get_metal_db_path()
     review_service = KdReviewService(
-        nsi_lookup=SqliteNsiLookup(metal_db_path), text_generator=_build_text_generator()
+        nsi_lookup=SqliteNsiLookup(metal_db_path),
+        text_generator=_build_text_generator(),
+        gost_lookup=SqliteGostLookup(_get_gost_db_path()),
     )
     report = await run_heavy(review_service.review, drawing_model)
 

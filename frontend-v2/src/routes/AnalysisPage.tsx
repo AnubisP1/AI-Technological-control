@@ -79,11 +79,14 @@ export function AnalysisPage() {
     download: () => Promise<Blob>
   } | null>(null)
 
-  // STEP обязателен для металла (Фаза 22) — без него "Производство" не
-  // может построить реальный фрезерный тулпас по геометрии детали.
+  // Для металла достаточно чертежа: оценка КД, сверка с НСИ, проверки
+  // оформления по ГОСТ и маршрутная карта строятся по данным чертежа.
+  // STEP-модель опциональна и нужна только для расчёта реального
+  // фрезерного тулпаса на "Производстве" (Фаза 23 — по прямому запросу
+  // пользователя разрешено отправлять на проверку один чертёж).
   const canAnalyze =
     materialKind === 'metal'
-      ? Boolean(drawing) && Boolean(stepModel)
+      ? Boolean(drawing)
       : Boolean(stepModel) && Boolean(selectedOption)
 
   const analyzeMutation = useMutation({
@@ -95,7 +98,8 @@ export function AnalysisPage() {
 
       if (materialKind === 'metal') {
         if (!drawing) throw new Error('Не выбран чертёж')
-        if (!stepModel) throw new Error('Не выбрана STEP-модель — без неё недоступен реальный расчёт УП на «Производстве»')
+        // stepModel может быть null — analyzeKd отправляет только те
+        // файлы, что переданы, а backend разбирает чертёж независимо.
         const analysisResult = await analyzeKd({ drawing, stepModel })
         setAnalysis(analysisResult)
         const reviewResult = await reviewKd({ drawing })
