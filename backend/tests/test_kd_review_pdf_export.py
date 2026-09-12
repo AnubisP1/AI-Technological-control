@@ -57,3 +57,34 @@ def test_review_pdf_endpoint_returns_pdf_content_type():
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+
+def test_kd_review_pdf_includes_gost_section(tmp_path):
+    """Фаза 23: проверки оформления по ГОСТ печатаются в отчёте —
+    реальная база требований, не синтетические данные."""
+    from app.infrastructure.db.sqlite_gost_lookup import SqliteGostLookup
+
+    drawing_path = _require(VAL_PDF)
+    drawing_model = PdfDrawingParser().parse(drawing_path)
+
+    metal_db_path = tmp_path / "metal.sqlite"
+    build_database(NsiDatabase.METAL, metal_db_path)
+    gost_db_path = tmp_path / "gost.sqlite"
+    build_database(NsiDatabase.GOST, gost_db_path)
+
+    service = KdReviewService(
+        nsi_lookup=SqliteNsiLookup(metal_db_path),
+        gost_lookup=SqliteGostLookup(gost_db_path),
+    )
+    report = service.review(drawing_model)
+    assert report.gost_checks
+
+    pdf_bytes = generate_kd_review_pdf(report, part_name="Вал")
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        full_text = "".join(page.get_text() for page in doc)
+    finally:
+        doc.close()
+
+    assert "Оформление по ГОСТ ЕСКД" in full_text
+    assert "ГОСТ 2.302" in full_text

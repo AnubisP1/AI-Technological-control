@@ -71,6 +71,25 @@ function buildMetalRegistryRows(review: KdReviewReport, routeCard: RouteCard): R
     })
   }
 
+  // Проверки оформления по ГОСТ ЕСКД (Фаза 23) — отдельный реестр:
+  // источник требований не справочник ресурсов предприятия, а база
+  // нормативных пунктов `БД НСИ/ГОСТ/`. not_applicable сюда не попадает
+  // вовсе — требование не применимо к этому виду КД, строка о нём была
+  // бы шумом в реестре, а не результатом проверки.
+  review.gost_checks
+    .filter((check) => check.status !== 'not_applicable')
+    .forEach((check, i) => {
+      rows.push({
+        id: `gost-${check.standard_designation}-${check.clause_number}-${i}`,
+        registry: `ГОСТ · ${check.standard_designation}`,
+        requirement: `п. ${check.clause_number}: ${check.parameter_name}`,
+        projectDoc: check.actual_value || '—',
+        status:
+          check.status === 'passed' ? 'ok' : check.status === 'violated' ? 'not_ok' : 'partial',
+        note: check.note || '—',
+      })
+    })
+
   review.technical_requirement_checks.forEach((tt) => {
     rows.push({
       id: `tt-${tt.number}`,

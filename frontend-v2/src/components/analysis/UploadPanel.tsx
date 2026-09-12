@@ -12,12 +12,17 @@ function FileField({
   file,
   onChange,
   icon: Icon,
+  optional = false,
+  hint,
 }: {
   label: string
   accept?: string
   file: File | null
   onChange: (file: File | null) => void
   icon: typeof FileText
+  /** Пометка "необязательно" — чтобы было видно, что анализ запустится и без этого файла. */
+  optional?: boolean
+  hint?: string
 }) {
   return (
     <label
@@ -27,10 +32,16 @@ function FileField({
       )}
     >
       <Icon className={cn('h-5 w-5 shrink-0', file ? 'text-brand' : 'text-ink-dim')} />
-      <span className="text-xs font-medium text-ink">{label}</span>
+      <span className="text-xs font-medium text-ink">
+        {label}
+        {optional ? <span className="ml-1 font-normal text-ink-dim">— необязательно</span> : null}
+      </span>
       <span className="max-w-full truncate text-[11px] text-ink-dim">
         {file ? file.name : 'нажмите, чтобы выбрать файл'}
       </span>
+      {hint && !file ? (
+        <span className="max-w-full text-[11px] leading-snug text-ink-dim">{hint}</span>
+      ) : null}
       <input
         type="file"
         accept={accept}
@@ -109,6 +120,8 @@ export function UploadPanel({
             file={stepModel}
             onChange={onStepModelChange}
             icon={Box}
+            optional
+            hint="Без модели доступны оценка КД, сверка с НСИ, проверка по ГОСТ и маршрутная карта. Расчёт УП на «Производстве» требует STEP."
           />
         </div>
       ) : (

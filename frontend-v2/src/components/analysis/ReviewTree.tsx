@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronRight, CheckCircle2, AlertTriangle, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { KdReviewReport, MatchStatus } from '@/lib/api'
+import type { GostRequirementCheck, KdReviewReport, MatchStatus } from '@/lib/api'
 
 const STATUS_META: Record<MatchStatus, { label: string; icon: typeof CheckCircle2; className: string }> = {
   matched: { label: 'совпадение', icon: CheckCircle2, className: 'text-emerald-600 bg-emerald-50' },
@@ -22,6 +22,26 @@ function StatusBadge({ status }: { status: MatchStatus }) {
       {meta.label}
     </span>
   )
+}
+
+/**
+ * Статусы проверок ГОСТ маппятся на ту же визуальную шкалу, что и
+ * сверка с НСИ, но не тождественны ей: not_applicable — требование не
+ * применимо к этому виду КД, это НЕ нарушение и не «совпадение», поэтому
+ * получает нейтральный вид без цветной рамки.
+ */
+const GOST_STATUS_TO_MATCH: Record<GostRequirementCheck['status'], MatchStatus | undefined> = {
+  passed: 'matched',
+  violated: 'not_found',
+  needs_review: 'partial_match',
+  not_applicable: undefined,
+}
+
+const GOST_STATUS_LABEL: Record<GostRequirementCheck['status'], string> = {
+  passed: 'соответствует',
+  violated: 'нарушение',
+  needs_review: 'проверить',
+  not_applicable: 'не применимо',
 }
 
 function TreeNode({
@@ -89,6 +109,29 @@ export function ReviewTree({ review }: { review: KdReviewReport }) {
           status={review.blank_check.status}
           note={review.blank_check.note}
         />
+      )}
+      {review.gost_checks.length > 0 && (
+        <TreeNode
+          label={`Оформление по ГОСТ ЕСКД (${
+            review.gost_checks.filter((c) => c.status === 'violated').length
+          } нарушений, ${review.gost_checks.filter((c) => c.status === 'needs_review').length} на проверку)`}
+          defaultOpen={false}
+        >
+          {review.gost_checks.map((check, index) => (
+            <TreeNode
+              key={`${check.standard_designation}-${check.clause_number}-${index}`}
+              label={`${check.standard_designation}, п. ${check.clause_number}: ${check.parameter_name}`}
+              status={GOST_STATUS_TO_MATCH[check.status]}
+              note={[
+                GOST_STATUS_LABEL[check.status],
+                check.actual_value ? `фактически: «${check.actual_value}»` : null,
+                check.note,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            />
+          ))}
+        </TreeNode>
       )}
       {review.technical_requirement_checks.length > 0 && (
         <TreeNode label="Технические требования" defaultOpen={false}>

@@ -329,10 +329,11 @@ export function ProductionPage() {
       if (!pendingInput) throw new Error('Нет входных данных — сначала пройдите «Анализ детали».')
 
       if (pendingInput.kind === 'metal') {
-        // Фаза 22: STEP теперь обязателен для металла (см. AnalysisPage/
-        // workflow.tsx) — реальный тулпас всегда доступен для новых
-        // деталей. Легаси-путь (simulateMetalManufacturing) больше не
-        // вызывается с этого экрана.
+        // Фаза 23: STEP снова опционален (чертёж можно отправить на
+        // проверку один). Без модели тулпас не считается вовсе — вместо
+        // него ниже показывается честное сообщение, а не декоративная
+        // анимация: реальной геометрии для расчёта съёма материала нет.
+        if (!pendingInput.stepModel) return
         const result = await generateMetalToolpath({
           stepModel: pendingInput.stepModel,
           drawing: pendingInput.drawing,
@@ -349,7 +350,12 @@ export function ProductionPage() {
     },
   })
 
+  // Металл без STEP-модели: расчёт УП невозможен, запускать мутацию
+  // незачем — экран сразу показывает, чего не хватает.
+  const metalWithoutModel = pendingInput?.kind === 'metal' && !pendingInput.stepModel
+
   useEffect(() => {
+    if (metalWithoutModel) return
     if (readyForApproval && approvalApproved && !toolpathResult && !legacyPlan && !planMutation.isPending) {
       planMutation.mutate()
     }
@@ -401,6 +407,40 @@ export function ProductionPage() {
     )
   }
 
+  if (approvalApproved && metalWithoutModel) {
+    return (
+      <Container className="max-w-2xl py-10">
+        <PageBackdrop />
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight text-ink">Комплект ТД согласован</h1>
+        <p className="mb-8 text-sm text-ink-dim">
+          Изготовление детали «{pendingInput?.kind === 'metal' ? pendingInput.routeCard.part_name ?? '—' : '—'}»
+        </p>
+
+        <div className="flex flex-col items-start gap-4 rounded-2xl border border-dashed border-border bg-surface p-6">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+            <ClipboardCheck className="h-5 w-5" />
+          </span>
+          <p className="text-sm text-ink">
+            Расчёт управляющей программы недоступен: деталь загружена без 3D-модели.
+          </p>
+          <p className="text-xs leading-relaxed text-ink-dim">
+            Траектория инструмента и симуляция съёма материала считаются по реальной геометрии
+            детали из STEP-модели. По одному чертежу их построить нельзя, а показывать
+            непосчитанную траекторию система не будет. Оценка КД, проверки оформления по ГОСТ,
+            сверка с НСИ и маршрутная карта — уже сформированы и остаются в силе.
+          </p>
+          <Link
+            to="/app/analysis"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+          >
+            Загрузить деталь вместе со STEP-моделью
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </Container>
+    )
+  }
+
   if (!approvalApproved || (!toolpathResult && !legacyPlan)) {
     return (
       <Container className="max-w-2xl py-10">
@@ -442,7 +482,7 @@ export function ProductionPage() {
       <p className="mb-8 text-sm text-ink-dim">Изготовление детали «{partName}»</p>
 
       <div className="rounded-2xl border border-border bg-surface p-6">
-        {toolpathResult && pendingInput?.kind === 'metal' && (
+        {toolpathResult && pendingInput?.kind === 'metal' && pendingInput.stepModel && (
           <ToolpathSimulation response={toolpathResult} stepModel={pendingInput.stepModel} />
         )}
         {legacyPlan && <LegacySimulation plan={legacyPlan} />}

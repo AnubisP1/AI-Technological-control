@@ -54,6 +54,37 @@ class TechnicalRequirementCheck:
     note: str = ""
 
 
+class GostCheckStatus(str, Enum):
+    """Результат проверки одного требования ГОСТ к оформлению чертежа.
+
+    NOT_APPLICABLE и NEEDS_REVIEW различаются намеренно: первое — правило
+    к этому чертежу не относится, второе — относится, но однозначный
+    вердикт машина вынести не может (графа с обязательностью «○» по
+    ГОСТ 2.104 — зависит от вида КД). Схлопывать их в «ок» нельзя: это
+    скрыло бы от технолога места, требующие его решения."""
+
+    PASSED = "passed"
+    VIOLATED = "violated"
+    NEEDS_REVIEW = "needs_review"
+    NOT_APPLICABLE = "not_applicable"
+
+
+@dataclass(frozen=True)
+class GostRequirementCheck:
+    """Проверка одного требования ГОСТ к оформлению чертежа.
+
+    Всегда несёт ссылку на конкретный пункт стандарта — технолог должен
+    видеть основание вердикта, а не только сам вердикт."""
+
+    standard_designation: str  # 'ГОСТ 2.302-1968'
+    clause_number: str  # '2-умен', '6.3', 'графа 3'
+    parameter_name: str  # что проверялось
+    status: GostCheckStatus
+    actual_value: str | None = None  # что фактически найдено на чертеже
+    expected: str | None = None  # чего требует стандарт
+    note: str = ""
+
+
 @dataclass(frozen=True)
 class KdReviewFinding:
     """Одна находка обратной связи на этап проектирования — конкретная,
@@ -79,6 +110,12 @@ class KdReviewReport:
     material_check: MaterialCheck | None
     blank_check: BlankCheck | None
     technical_requirement_checks: tuple[TechnicalRequirementCheck, ...] = field(default_factory=tuple)
+    # Проверка оформления чертежа по ГОСТ ЕСКД (БД НСИ/ГОСТ/) — отдельный
+    # раздел отчёта: сверка с НСИ отвечает «есть ли такой материал на
+    # предприятии», а эти проверки — «оформлен ли чертёж по правилам».
+    # Пустой кортеж, если база ГОСТ недоступна: отсутствие проверок не
+    # выдаётся за их успешное прохождение.
+    gost_checks: tuple[GostRequirementCheck, ...] = field(default_factory=tuple)
     findings: tuple[KdReviewFinding, ...] = field(default_factory=tuple)
     summary: ReviewSummary | None = None
 

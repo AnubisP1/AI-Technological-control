@@ -13,7 +13,11 @@ import io
 
 import fitz
 
-from app.domain.kd_review.review_model import KdReviewReport, MatchStatus
+from app.domain.kd_review.review_model import (
+    GostCheckStatus,
+    KdReviewReport,
+    MatchStatus,
+)
 
 _PAGE_WIDTH, _PAGE_HEIGHT = fitz.paper_size("a4")
 _MARGIN = 40
@@ -36,6 +40,22 @@ _STATUS_LABEL = {
     MatchStatus.NOT_FOUND: "не найдено",
 }
 _SEVERITY_COLOR = {"blocking": _COLOR_ERROR, "warning": _COLOR_WARN, "info": _COLOR_MUTED}
+
+# Проверки оформления по ГОСТ ЕСКД (Фаза 23). NOT_APPLICABLE в отчёт не
+# печатается вовсе — «требование не применимо» не является результатом
+# проверки и только удлинило бы документ.
+_GOST_STATUS_LABEL = {
+    GostCheckStatus.PASSED: "соответствует",
+    GostCheckStatus.VIOLATED: "НАРУШЕНИЕ",
+    GostCheckStatus.NEEDS_REVIEW: "требует проверки технологом",
+    GostCheckStatus.NOT_APPLICABLE: "не применимо",
+}
+_GOST_STATUS_COLOR = {
+    GostCheckStatus.PASSED: _COLOR_OK,
+    GostCheckStatus.VIOLATED: _COLOR_ERROR,
+    GostCheckStatus.NEEDS_REVIEW: _COLOR_WARN,
+    GostCheckStatus.NOT_APPLICABLE: _COLOR_MUTED,
+}
 
 
 class _PdfCursor:
@@ -154,6 +174,25 @@ def generate_kd_review_pdf(report: KdReviewReport, *, part_name: str | None) -> 
                 color=status_color,
             )
             cursor.line(f"  категория: {category}", indent=32, size=9, color=_COLOR_MUTED)
+
+    gost_checks = [
+        check
+        for check in report.gost_checks
+        if check.status is not GostCheckStatus.NOT_APPLICABLE
+    ]
+    if gost_checks:
+        cursor.line("Оформление по ГОСТ ЕСКД", indent=0, bold=True)
+        for check in gost_checks:
+            actual = f" — фактически: «{check.actual_value}»" if check.actual_value else ""
+            cursor.wrapped_line(
+                f"— {check.standard_designation}, п. {check.clause_number}: "
+                f"{check.parameter_name}: {_GOST_STATUS_LABEL[check.status]}{actual}",
+                indent=16,
+                size=10,
+                color=_GOST_STATUS_COLOR[check.status],
+            )
+            if check.note:
+                cursor.wrapped_line(check.note, indent=32, size=9, color=_COLOR_MUTED)
 
     cursor.gap(10)
     cursor.line("Находки", size=13, bold=True)
