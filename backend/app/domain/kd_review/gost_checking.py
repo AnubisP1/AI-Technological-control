@@ -18,8 +18,10 @@ import re
 from app.domain.cad.drawing_model import DrawingModel
 from app.domain.kd_review.gost_lookup_port import (
     GostEnumRequirement,
+    GostNumericRequirement,
     GostTitleBlockField,
 )
+from app.domain.material_text import extract_plate_dimensions_mm, is_plate_blank
 from app.domain.kd_review.review_model import GostCheckStatus, GostRequirementCheck
 
 # Соответствие «поле основной надписи в DrawingModel -> номер графы по
@@ -302,5 +304,83 @@ def check_material_designation(drawing: DrawingModel) -> GostRequirementCheck:
             "соответствии с обозначением, установленным стандартами на "
             "материал или техническими условиями. Возможна также неполнота "
             "распознавания — проверьте оригинал."
+        ),
+    )
+
+
+# Сортамент плоских заготовок: параметры ГОСТ 17232-2023, размеченные в
+# базе как NUMERIC_LIMIT. Ключ — по какому размеру из обозначения
+# заготовки сверять требование.
+_PLATE_THICKNESS_MARKER = "толщина плиты"
+
+
+def check_plate_blank_sortament(
+    drawing: DrawingModel, numeric_requirements: tuple[GostNumericRequirement, ...]
+) -> GostRequirementCheck | None:
+    """Толщина плоской заготовки против сортамента ГОСТ 17232-2023.
+
+    Сверяется ТОЛЬКО толщина. Ширина и длина в обозначении заготовки на
+    чертеже детали — это размер вырезанной под деталь карточки
+    («Плита Д16 А Т 35x80x80»), а не размер поставляемой плиты: по
+    таблице 1 стандарта ширина начинается от 1000 мм, длина от 2000 мм,
+    и сверка 80×80 с этими рядами дала бы заведомо ложное нарушение.
+    Толщина же остаётся толщиной исходного листа при любой вырезке.
+
+    Возвращает None, если заготовка не плоская, размеры не распознаны
+    или в базе нет требования по толщине — молча «проходить» проверку,
+    которая не выполнялась, нельзя.
+    """
+    blank = drawing.title_block.blank_designation
+    if not blank or not is_plate_blank(blank):
+        return None
+
+    dimensions = extract_plate_dimensions_mm(blank)
+    if dimensions is None:
+        return None
+    thickness_mm = dimensions[0]
+
+    thickness_requirements = tuple(
+        r
+        for r in numeric_requirements
+        if _PLATE_THICKNESS_MARKER in (r.parameter_name or "").lower()
+        and r.comparison_op == "BETWEEN"
+        and r.limit_value_min is not None
+        and r.limit_value_max is not None
+    )
+    if not thickness_requirements:
+        return None
+
+    requirement = thickness_requirements[0]
+    minimum = float(requirement.limit_value_min)
+    maximum = float(requirement.limit_value_max)
+    expected = f"от {minimum:g} до {maximum:g} {requirement.unit or 'мм'}"
+
+    if minimum <= thickness_mm <= maximum:
+        return GostRequirementCheck(
+            standard_designation=requirement.standard_designation,
+            clause_number=requirement.clause_number,
+            parameter_name=requirement.parameter_name,
+            status=GostCheckStatus.PASSED,
+            actual_value=f"{thickness_mm:g} мм",
+            expected=expected,
+            note=(
+                "Толщина заготовки входит в сортамент стандарта. Ширина и длина "
+                "не сверялись: в обозначении заготовки чертежа детали это размер "
+                "вырезанной карточки, а не поставляемой плиты."
+            ),
+        )
+
+    return GostRequirementCheck(
+        standard_designation=requirement.standard_designation,
+        clause_number=requirement.clause_number,
+        parameter_name=requirement.parameter_name,
+        status=GostCheckStatus.VIOLATED,
+        actual_value=f"{thickness_mm:g} мм",
+        expected=expected,
+        note=(
+            f"Толщина заготовки {thickness_mm:g} мм вне сортамента "
+            f"{requirement.standard_designation} ({expected}) — такая плита "
+            "стандартом не выпускается. Проверьте обозначение заготовки или "
+            "согласуйте другой вид проката."
         ),
     )

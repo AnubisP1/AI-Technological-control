@@ -58,6 +58,9 @@ _SEED_FILE_ORDER: dict[NsiDatabase, list[str]] = {
         "seed_gost_2307_clauses.sql",
         "seed_gost_2316_clauses.sql",
         "seed_gost_25142_clauses.sql",
+        # Сортамент материала (не ЕСКД): допустимые размеры плит, с которыми
+        # сверяется заготовка из основной надписи чертежа.
+        "seed_gost_17232_clauses.sql",
         "zz_seed_cross_references.sql",
     ],
 }

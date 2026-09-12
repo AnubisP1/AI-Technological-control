@@ -19,6 +19,17 @@ _RE_STRIP_STEEL_PREFIX = re.compile(r"^Сталь\s+", re.IGNORECASE)
 _RE_BLANK_PROFILE_DIAMETER = re.compile(
     r"^(?:Круг|Пруток|Труба)\s+(\d+(?:[.,]\d+)?)", re.IGNORECASE
 )
+# Плоский сортамент: «Плита Д16 А Т 35x80x80 ГОСТ 17232-2023» — размеры
+# идут тройкой толщина×ширина×длина. Разделителем на чертежах бывает и
+# латинская «x», и русская «х», и знак «×». Между размерами и буквами
+# состояния/точности возможен суффикс «П» (повышенная точность по
+# толщине, ГОСТ 17232-2023 п. 3.1) — «20Пх1200x3000», поэтому он
+# допускается сразу после первого числа и в захват не входит.
+_RE_PLATE_DIMENSIONS = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*[ПP]?\s*[xх×]\s*(\d+(?:[.,]\d+)?)\s*[xх×]\s*(\d+(?:[.,]\d+)?)",
+    re.IGNORECASE,
+)
+_RE_PLATE_PROFILE = re.compile(r"^(?:Плита|Лист|Полоса)\b", re.IGNORECASE)
 
 
 def normalize_grade(text: str) -> str:
@@ -50,3 +61,27 @@ def extract_blank_diameter_mm(blank_designation: str) -> float | None:
     подставляет произвольное число."""
     match = _RE_BLANK_PROFILE_DIAMETER.search(blank_designation.strip())
     return float(match.group(1).replace(",", ".")) if match else None
+
+
+def is_plate_blank(blank_designation: str) -> bool:
+    """Плоский ли это сортамент («Плита ...», «Лист ...», «Полоса ...»).
+    Отличается от круглого проката тем, что размер задаётся тройкой
+    толщина×ширина×длина, а не диаметром."""
+    return bool(_RE_PLATE_PROFILE.match(blank_designation.strip()))
+
+
+def extract_plate_dimensions_mm(
+    blank_designation: str,
+) -> tuple[float, float, float] | None:
+    """Извлекает (толщина, ширина, длина) из обозначения плоской
+    заготовки: «Плита Д16 А Т 35x80x80 ГОСТ 17232-2023» -> (35, 80, 80).
+
+    Порядок размеров — по ГОСТ 17232-2023, п. 4.2.8 (пример условного
+    обозначения «Плита Д16 А Т 20x1200x3000»): толщина, ширина, длина.
+    Возвращает None, если тройка размеров не распознана — подставлять
+    произвольные числа нельзя, от них зависит вердикт проверки.
+    """
+    match = _RE_PLATE_DIMENSIONS.search(blank_designation)
+    if match is None:
+        return None
+    return tuple(float(g.replace(",", ".")) for g in match.groups())  # type: ignore[return-value]

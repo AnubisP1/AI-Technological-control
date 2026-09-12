@@ -51,3 +51,35 @@ SELECT src.id, dst.id, 'EXCEPTION_TO', 'Случай припуска на об�
 FROM gost_clause src, gost_clause dst
 WHERE src.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ Р 2.109-2023') AND src.clause_number = '5.12'
   AND dst.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ Р 2.109-2023') AND dst.clause_number = '5.10';
+
+
+-- ---------- ГОСТ 17232-2023 (сортамент плит) ----------
+-- Стандарт на сортамент ссылается на стандарты марок: сам по себе он
+-- задаёт размеры, а химический состав марки (в т.ч. Д16) — по ГОСТ 4784.
+INSERT INTO gost_clause_reference (from_clause_id, to_standard_designation, reference_type, note)
+SELECT src.id, 'ГОСТ 4784', 'REFERS_TO', 'Химический состав марок алюминиевых сплавов (в т.ч. Д16), из которых изготовляют плиты'
+FROM gost_clause src
+WHERE src.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ 17232-2023')
+  AND src.clause_number = '4.1';
+
+INSERT INTO gost_clause_reference (from_clause_id, to_standard_designation, reference_type, note)
+SELECT src.id, 'ГОСТ 11069', 'REFERS_TO', 'Химический состав марок первичного алюминия (А7, А6, А5, А0), из которых изготовляют плиты'
+FROM gost_clause src
+WHERE src.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ 17232-2023')
+  AND src.clause_number = '4.1';
+
+-- Пример условного обозначения (4.2.8) опирается на классификацию раздела 3:
+-- буквы «А» и «Т» в записи «Плита Д16 А Т 20x1200x3000» — это плакировка и
+-- состояние материала, а «П» — точность. Без этих связей запись обозначения
+-- выглядит нерасшифровываемой строкой.
+INSERT INTO gost_clause_reference (from_clause_id, to_clause_id, reference_type, note)
+SELECT src.id, dst.id, 'CLARIFIES', 'Буква плакировки в условном обозначении плиты определена классификацией 3.1'
+FROM gost_clause src, gost_clause dst
+WHERE src.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ 17232-2023') AND src.clause_number = '4.2.8'
+  AND dst.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ 17232-2023') AND dst.clause_number = '3.1-плакировка';
+
+INSERT INTO gost_clause_reference (from_clause_id, to_clause_id, reference_type, note)
+SELECT src.id, dst.id, 'CLARIFIES', 'Буква состояния материала в условном обозначении плиты определена классификацией 3.1'
+FROM gost_clause src, gost_clause dst
+WHERE src.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ 17232-2023') AND src.clause_number = '4.2.8'
+  AND dst.gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ 17232-2023') AND dst.clause_number = '3.1-состояние';

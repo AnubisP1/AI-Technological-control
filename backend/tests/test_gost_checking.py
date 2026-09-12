@@ -10,11 +10,16 @@ from __future__ import annotations
 from app.domain.cad.drawing_model import DrawingModel, TechnicalRequirement, TitleBlockFields
 from app.domain.kd_review.gost_checking import (
     check_material_designation,
+    check_plate_blank_sortament,
     check_scale,
     check_technical_requirements_numbering,
     check_title_block,
 )
-from app.domain.kd_review.gost_lookup_port import GostEnumRequirement, GostTitleBlockField
+from app.domain.kd_review.gost_lookup_port import (
+    GostEnumRequirement,
+    GostNumericRequirement,
+    GostTitleBlockField,
+)
 from app.domain.kd_review.review_model import GostCheckStatus
 
 # Ряды из ГОСТ 2.302 п.2 — ровно так они размечены в seed_gost_2302_clauses.sql.
@@ -175,3 +180,92 @@ class TestCheckMaterialDesignation:
         result = check_material_designation(_drawing(material="—"))
         assert result.status is GostCheckStatus.NEEDS_REVIEW
         assert result.actual_value is None
+
+
+# Сортамент плит по ГОСТ 17232-2023, таблица 1 — ровно так размечено в
+# seed_gost_17232_clauses.sql (диапазон для группы марок с Д16).
+PLATE_REQUIREMENTS = (
+    GostNumericRequirement(
+        standard_designation="ГОСТ 17232-2023",
+        clause_number="4.2.1-толщина-Д16",
+        parameter_name="толщина плиты из сплава Д16 (таблица 1)",
+        unit="мм",
+        comparison_op="BETWEEN",
+        limit_value_min=10.5,
+        limit_value_max=200.0,
+        clause_text="Плиты в зависимости от марки сплава…",
+    ),
+)
+
+
+class TestCheckPlateBlankSortament:
+    def _drawing_with_blank(self, blank: str) -> DrawingModel:
+        return DrawingModel(
+            file_path="test.pdf",
+            page_count=1,
+            title_block=TitleBlockFields(blank_designation=blank),
+        )
+
+    def test_толщина_в_сортаменте_проходит(self):
+        result = check_plate_blank_sortament(
+            self._drawing_with_blank("Плита Д16 А Т 35х80х80 ГОСТ 17232-2023"),
+            PLATE_REQUIREMENTS,
+        )
+        assert result is not None
+        assert result.status is GostCheckStatus.PASSED
+        assert result.actual_value == "35 мм"
+
+    def test_ширина_и_длина_не_сверяются(self):
+        """80x80 — размер вырезанной под деталь карточки, а не
+        поставляемой плиты (по таблице 1 ширина от 1000, длина от 2000).
+        Сверка этих размеров дала бы заведомо ложное нарушение."""
+        result = check_plate_blank_sortament(
+            self._drawing_with_blank("Плита Д16 А Т 35х80х80 ГОСТ 17232-2023"),
+            PLATE_REQUIREMENTS,
+        )
+        assert result is not None
+        assert result.status is GostCheckStatus.PASSED
+        assert "не сверялись" in result.note
+
+    def test_толщина_ниже_сортамента_нарушение(self):
+        result = check_plate_blank_sortament(
+            self._drawing_with_blank("Плита Д16 А Т 8х500х1000 ГОСТ 17232-2023"),
+            PLATE_REQUIREMENTS,
+        )
+        assert result is not None
+        assert result.status is GostCheckStatus.VIOLATED
+
+    def test_толщина_выше_сортамента_нарушение(self):
+        result = check_plate_blank_sortament(
+            self._drawing_with_blank("Плита Д16 А Т 250х1000х2000 ГОСТ 17232-2023"),
+            PLATE_REQUIREMENTS,
+        )
+        assert result is not None
+        assert result.status is GostCheckStatus.VIOLATED
+
+    def test_суффикс_повышенной_точности_не_ломает_разбор(self):
+        """«20Пх1200x3000» — повышенная точность по толщине (п. 3.1),
+        пример условного обозначения из п. 4.2.8 стандарта."""
+        result = check_plate_blank_sortament(
+            self._drawing_with_blank("Плита Д16 А Т 20Пх1200x3000 ГОСТ 17232-2023"),
+            PLATE_REQUIREMENTS,
+        )
+        assert result is not None
+        assert result.status is GostCheckStatus.PASSED
+        assert result.actual_value == "20 мм"
+
+    def test_круглый_прокат_не_проверяется(self):
+        assert (
+            check_plate_blank_sortament(
+                self._drawing_with_blank("Круг 67 ГОСТ 2590-2006"), PLATE_REQUIREMENTS
+            )
+            is None
+        )
+
+    def test_без_требований_в_базе_проверка_не_выполняется(self):
+        assert (
+            check_plate_blank_sortament(
+                self._drawing_with_blank("Плита Д16 А Т 35х80х80 ГОСТ 17232-2023"), ()
+            )
+            is None
+        )

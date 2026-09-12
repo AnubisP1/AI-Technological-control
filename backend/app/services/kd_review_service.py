@@ -12,6 +12,7 @@ import logging
 from app.domain.cad.drawing_model import DrawingModel
 from app.domain.kd_review.gost_checking import (
     check_material_designation,
+    check_plate_blank_sortament,
     check_scale,
     check_technical_requirements_numbering,
     check_title_block,
@@ -126,6 +127,14 @@ class KdReviewService:
             if scale_check is not None:
                 checks.append(scale_check)
             checks.extend(check_title_block(drawing, self._gost_lookup.find_title_block_fields()))
+            # Сортамент заготовки (ГОСТ 17232-2023) — единственная проверка
+            # не по ЕСКД: сверяет не оформление, а реальную выпускаемость
+            # указанной заготовки.
+            sortament_check = check_plate_blank_sortament(
+                drawing, self._gost_lookup.find_numeric_requirements()
+            )
+            if sortament_check is not None:
+                checks.append(sortament_check)
         except Exception:
             # Недоступная база ГОСТ не должна ронять весь отчёт: сверка с
             # НСИ и оценка ТТ остаются валидными. Проверки оформления при
