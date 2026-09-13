@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 _RE_GOST_NUMBER = re.compile(r"ГОСТ\s*([\d.\-]+)", re.IGNORECASE)
 _RE_STRIP_STEEL_PREFIX = re.compile(r"^Сталь\s+", re.IGNORECASE)
@@ -45,8 +46,31 @@ _RE_SIZE_TOKEN = re.compile(r"^[\d.,]+(?:[xх×][\d.,]+)*$", re.IGNORECASE)
 # п. 3.1 — отдельными токенами («Д16 А Т 35x80x80») или слитно («Д16 АТ»).
 # Это характеристики поставки, а не часть марки.
 _TEMPER_TOKENS = frozenset(
-    {"А", "Б", "М", "Н", "Н1", "Н2", "Т", "Т1", "П", "АТ", "АМ", "БТ", "БМ"}
+    {
+        "А", "Б", "М", "Н", "Н1", "Н2", "Т", "Т1", "П",
+        "АТ", "АТ1", "АМ", "БТ", "БТ1", "БМ",
+    }
 )
+
+_PLATING_TOKENS = frozenset({"А", "Б"})
+_MATERIAL_STATE_TOKENS = frozenset({"М", "Н", "Н1", "Н2", "Т", "Т1"})
+_COMBINED_PLATE_TOKENS: dict[str, tuple[str, str]] = {
+    "АТ": ("А", "Т"),
+    "АТ1": ("А", "Т1"),
+    "АМ": ("А", "М"),
+    "БТ": ("Б", "Т"),
+    "БТ1": ("Б", "Т1"),
+    "БМ": ("Б", "М"),
+}
+
+
+@dataclass(frozen=True)
+class PlateMaterialAttributes:
+    """Структура обозначения плиты по ГОСТ 17232-2023."""
+
+    grade: str
+    plating: str | None = None
+    material_state: str | None = None
 
 
 def normalize_grade(text: str) -> str:
@@ -65,7 +89,13 @@ def extract_grade_part(material_text: str) -> str:
     """Отрезает от строки материала часть с ГОСТ, оставляя только марку —
     'Сталь 12ХН3А ГОСТ 4543-2016' -> 'Сталь 12ХН3А'."""
     gost_pos = material_text.upper().find("ГОСТ")
-    return material_text[:gost_pos].strip() if gost_pos != -1 else material_text.strip()
+    head = material_text[:gost_pos].strip() if gost_pos != -1 else material_text.strip()
+    tokens = head.split()
+    # Отдельные суффиксы — атрибуты поставки, а не часть марки.
+    # Слитный суффикс внутри самой марки при этом не изменяется.
+    while len(tokens) > 1 and tokens[-1].upper() in _TEMPER_TOKENS:
+        tokens.pop()
+    return " ".join(tokens)
 
 
 def extract_blank_diameter_mm(blank_designation: str) -> float | None:
@@ -85,6 +115,56 @@ def is_plate_blank(blank_designation: str) -> bool:
     Отличается от круглого проката тем, что размер задаётся тройкой
     толщина×ширина×длина, а не диаметром."""
     return bool(_RE_PLATE_PROFILE.match(blank_designation.strip()))
+
+
+def extract_plate_material_attributes(
+    blank_designation: str,
+) -> PlateMaterialAttributes | None:
+    """Извлекает марку, плакировку и состояние материала плиты.
+
+    Понимает как нормативную запись с раздельными «А Т», так и слитное
+    OCR-прочтение «АТ».
+    """
+    if not is_plate_blank(blank_designation):
+        return None
+
+    gost_match = _RE_GOST_NUMBER.search(blank_designation)
+    head = blank_designation[: gost_match.start()] if gost_match else blank_designation
+    head = _RE_LEADING_PROFILE.sub("", head.strip(), count=1).strip()
+    dimensions = _RE_PLATE_DIMENSIONS.search(head)
+    if dimensions is not None:
+        head = head[: dimensions.start()].strip()
+    else:
+        # У листа может быть один размер после марки.
+        head = re.sub(r"\s+\d+(?:[.,]\d+)?\s*$", "", head)
+
+    tokens = [token.strip(".,;").upper() for token in head.split() if token.strip(".,;")]
+    grade_index = next(
+        (
+            index
+            for index, token in enumerate(tokens)
+            if re.search(r"[A-ZА-ЯЁ]", token)
+            and token not in _TEMPER_TOKENS
+        ),
+        None,
+    )
+    if grade_index is None:
+        return None
+
+    grade = tokens[grade_index]
+    modifiers = tokens[grade_index + 1 :]
+    if len(modifiers) == 1 and modifiers[0] in _COMBINED_PLATE_TOKENS:
+        modifiers = list(_COMBINED_PLATE_TOKENS[modifiers[0]])
+
+    plating = next((token for token in modifiers if token in _PLATING_TOKENS), None)
+    material_state = next(
+        (token for token in modifiers if token in _MATERIAL_STATE_TOKENS), None
+    )
+    return PlateMaterialAttributes(
+        grade=grade,
+        plating=plating,
+        material_state=material_state,
+    )
 
 
 def extract_plate_dimensions_mm(
@@ -129,6 +209,15 @@ def extract_material_from_blank_designation(blank_designation: str) -> str | Non
 
     head = text[: gost_match.start()]
     head = _RE_LEADING_PROFILE.sub("", head, count=1)
+
+    plate_attributes = extract_plate_material_attributes(text)
+    if plate_attributes is not None:
+        parts = [plate_attributes.grade]
+        if plate_attributes.plating is not None:
+            parts.append(plate_attributes.plating)
+        if plate_attributes.material_state is not None:
+            parts.append(plate_attributes.material_state)
+        return f"{' '.join(parts)} ГОСТ {gost_match.group(1)}"
 
     for token in head.split():
         cleaned = token.strip(".,;")

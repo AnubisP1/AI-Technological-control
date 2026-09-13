@@ -4,7 +4,7 @@ import pytest
 
 from app.domain.kd_review.material_matching import match_blank, match_material
 from app.domain.kd_review.nsi_lookup_port import MaterialRecord, WorkpieceBlankRecord
-from app.domain.kd_review.review_model import MatchStatus
+from app.domain.kd_review.review_model import GostCheckStatus, MatchStatus
 from app.domain.kd_review.tt_categories import classify_requirement
 from app.infrastructure.cad.pdf_drawing_parser import PdfDrawingParser
 from app.infrastructure.db.sqlite_nsi_lookup import SqliteNsiLookup
@@ -83,11 +83,11 @@ def test_match_material_accepts_product_standard_confirmed_by_blank():
             material_grade="Д16",
         ),
     )
-    result = match_material("Д16 ГОСТ 17232-2023", materials, blanks)
-    assert result.status == MatchStatus.MATCHED
+    result = match_material("Д16 А Т ГОСТ 17232-2023", materials, blanks)
+    assert result.status == MatchStatus.PARTIAL_MATCH
     assert result.matched_grade == "Д16"
     assert result.matched_gost == "ГОСТ 4784-2019"
-    assert "стандарт на продукцию" in result.note
+    assert "проверки плакировки и состояния" in result.note
 
 
 def test_match_blank_partial_match_when_gost_matches_but_diameter_does_not():
@@ -179,6 +179,41 @@ def test_review_service_on_gear_drawing_finds_material_and_partial_blank_match(t
 
     assert report.material_check.status == MatchStatus.MATCHED
     assert report.blank_check.status == MatchStatus.PARTIAL_MATCH
+
+
+def test_review_service_confirms_d16_a_t_from_gost(tmp_path: Path):
+    from app.domain.cad.drawing_model import DrawingModel, TitleBlockFields
+    from app.infrastructure.db.nsi_db import NsiDatabase, build_database
+    from app.infrastructure.db.sqlite_gost_lookup import SqliteGostLookup
+
+    metal_path = tmp_path / "metal.sqlite"
+    gost_path = tmp_path / "gost.sqlite"
+    build_database(NsiDatabase.METAL, metal_path)
+    build_database(NsiDatabase.GOST, gost_path)
+    drawing = DrawingModel(
+        file_path="test.pdf",
+        page_count=1,
+        title_block=TitleBlockFields(
+            material="Д16 А Т ГОСТ 17232-2023",
+            blank_designation="Плита Д16 АТ 35x80x80 ГОСТ 17232-2023",
+        ),
+    )
+
+    report = KdReviewService(
+        nsi_lookup=SqliteNsiLookup(metal_path),
+        gost_lookup=SqliteGostLookup(gost_path),
+    ).review(drawing)
+
+    assert report.material_check.status is MatchStatus.MATCHED
+    assert report.material_check.material_from_drawing == "Д16 А Т ГОСТ 17232-2023"
+    assert "Материал указан верно" in report.material_check.note
+    assert "состояние А Т" in report.material_check.note
+    attribute_checks = [
+        check for check in report.gost_checks
+        if check.clause_number in {"3.1-плакировка", "3.1-состояние"}
+    ]
+    assert len(attribute_checks) == 2
+    assert all(check.status is GostCheckStatus.PASSED for check in attribute_checks)
 
 
 def test_review_service_without_drawing_returns_blocking_finding():

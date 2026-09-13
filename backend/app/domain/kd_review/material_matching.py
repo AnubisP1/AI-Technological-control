@@ -76,13 +76,13 @@ def match_material(
         if product_standard_confirmed:
             return MaterialCheck(
                 material_from_drawing=material_from_drawing,
-                status=MatchStatus.MATCHED,
+                status=MatchStatus.PARTIAL_MATCH,
                 matched_grade=grade_match.grade,
                 matched_gost=grade_match.gost_standard,
                 note=(
-                    "Марка найдена в НСИ; указанный на чертеже ГОСТ "
-                    "подтверждён связанной записью заготовки как стандарт "
-                    "на продукцию/сортамент."
+                    "Марка найдена в НСИ, а ссылка ведёт на стандарт "
+                    "продукции/сортамента. Полное совпадение возможно после "
+                    "проверки плакировки и состояния по ГОСТ."
                 ),
             )
 

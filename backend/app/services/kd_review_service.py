@@ -14,6 +14,7 @@ from app.domain.kd_review.gost_checking import (
     check_general_roughness_format,
     check_material_designation,
     check_plate_blank_sortament,
+    check_plate_material_attributes,
     check_scale,
     check_technical_requirements_numbering,
     check_technical_requirements_order,
@@ -27,10 +28,12 @@ from app.domain.kd_review.review_model import (
     GostRequirementCheck,
     KdReviewFinding,
     KdReviewReport,
+    MaterialCheck,
     MatchStatus,
     ReviewSummary,
     TechnicalRequirementCheck,
 )
+from app.domain.material_text import extract_plate_material_attributes
 from app.domain.kd_review.text_generator_port import ITextGenerator
 from app.domain.kd_review.tt_template_matching import match_typical_requirement
 from app.domain.kd_review.tt_template_port import ITypicalRequirementLookup
@@ -86,6 +89,9 @@ class KdReviewService:
         material_check = match_material(
             drawing.title_block.material, materials, blanks
         )
+        material_check = self._confirm_plate_material_attributes(
+            drawing, material_check
+        )
         blank_check = match_blank(drawing.title_block.blank_designation, blanks)
 
         tt_checks = self._check_technical_requirements(drawing)
@@ -114,6 +120,62 @@ class KdReviewService:
             gost_checks=gost_checks,
             findings=findings,
             summary=summary,
+        )
+
+    def _confirm_plate_material_attributes(
+        self,
+        drawing: DrawingModel,
+        material_check: MaterialCheck,
+    ) -> MaterialCheck:
+        """Повышает partial match до matched только после ГОСТ-проверки.
+
+        Марка сплава подтверждается материальной НСИ, а буквы после неё —
+        справочными перечнями плакировки и состояния в ГОСТ 17232-2023.
+        """
+        if (
+            material_check.status is not MatchStatus.PARTIAL_MATCH
+            or material_check.matched_grade is None
+            or self._gost_lookup is None
+        ):
+            return material_check
+        attributes = extract_plate_material_attributes(
+            drawing.title_block.blank_designation or ""
+        )
+        if attributes is None:
+            return material_check
+        expected_count = sum(
+            value is not None
+            for value in (attributes.plating, attributes.material_state)
+        )
+        if expected_count == 0:
+            return material_check
+        try:
+            checks = check_plate_material_attributes(
+                drawing, self._gost_lookup.find_enum_requirements()
+            )
+        except Exception:
+            return material_check
+        if len(checks) != expected_count or any(
+            check.status is not GostCheckStatus.PASSED for check in checks
+        ):
+            return material_check
+
+        condition = " ".join(
+            value
+            for value in (attributes.plating, attributes.material_state)
+            if value is not None
+        )
+        return MaterialCheck(
+            material_from_drawing=material_check.material_from_drawing,
+            status=MatchStatus.MATCHED,
+            matched_grade=material_check.matched_grade,
+            matched_gost=material_check.matched_gost,
+            note=(
+                f"Материал указан верно: марка {attributes.grade} найдена в НСИ; "
+                f"состояние {condition} стандартом ГОСТ 17232-2023 допускается "
+                "(А — нормальная плакировка; Т — закалённое и "
+                "естественно состаренное)."
+            ),
         )
 
     def _check_technical_requirements(
@@ -200,9 +262,13 @@ class KdReviewService:
             return tuple(checks)
 
         try:
-            scale_check = check_scale(drawing, self._gost_lookup.find_enum_requirements())
+            enum_requirements = self._gost_lookup.find_enum_requirements()
+            scale_check = check_scale(drawing, enum_requirements)
             if scale_check is not None:
                 checks.append(scale_check)
+            checks.extend(
+                check_plate_material_attributes(drawing, enum_requirements)
+            )
             checks.extend(check_title_block(drawing, self._gost_lookup.find_title_block_fields()))
             find_procedural = getattr(
                 self._gost_lookup, "find_procedural_requirements", lambda: ()

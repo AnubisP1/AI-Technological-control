@@ -19,6 +19,7 @@ from app.domain.kd_review.review_model import GostCheckStatus, KdReviewFinding
 from app.domain.kd_review.tt_categories import classify_requirement
 from app.domain.material_text import (
     extract_material_from_blank_designation,
+    extract_plate_material_attributes,
     extract_plate_thickness_mm,
 )
 from app.infrastructure.cad.auto_drawing_parser import AutoDrawingParser
@@ -49,12 +50,21 @@ class TestMaterialFromCombinedRow:
             ("Лист Д16Т 2 ГОСТ 21631-2023", "Д16Т ГОСТ 21631-2023"),
             ("Лист 2 Д16 ГОСТ 21631-2019", "Д16 ГОСТ 21631-2019"),
             ("Лист АД31 ГОСТ 4784-97", "АД31 ГОСТ 4784-97"),
-            ("Плита Д16 АТ 35x80x80 ГОСТ 17232-2023", "Д16 ГОСТ 17232-2023"),
-            ("Плита Д16 А Т 20x1200x3000 ГОСТ 17232-2023", "Д16 ГОСТ 17232-2023"),
+            ("Плита Д16 АТ 35x80x80 ГОСТ 17232-2023", "Д16 А Т ГОСТ 17232-2023"),
+            ("Плита Д16 А Т 20x1200x3000 ГОСТ 17232-2023", "Д16 А Т ГОСТ 17232-2023"),
         ],
     )
     def test_марка_извлекается(self, blank_row: str, expected: str):
         assert extract_material_from_blank_designation(blank_row) == expected
+
+    def test_ат_разбирается_как_плакировка_и_состояние(self):
+        attributes = extract_plate_material_attributes(
+            "Плита Д16 АТ 35x80x80 ГОСТ 17232-2023"
+        )
+        assert attributes is not None
+        assert attributes.grade == "Д16"
+        assert attributes.plating == "А"
+        assert attributes.material_state == "Т"
 
     @pytest.mark.parametrize(
         "blank_row",
@@ -141,7 +151,7 @@ class TestLowResolutionScan:
         отдельный проход по штампу с увеличением и удалением линий
         разграфки её читает."""
         parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
-        assert parsed.title_block.material == "Д16 ГОСТ 17232-2023"
+        assert parsed.title_block.material == "Д16 А Т ГОСТ 17232-2023"
 
     def test_чертёж_с_текстовым_слоем_не_помечается_сканом(self):
         parsed = PdfDrawingParser().parse(_require(SHEET_DETAIL))
@@ -281,7 +291,7 @@ class TestStampFieldRecovery:
         assert parsed.title_block.blank_designation == (
             "Плита Д16 АТ 35x80x80 ГОСТ 17232-2023"
         )
-        assert parsed.title_block.material == "Д16 ГОСТ 17232-2023"
+        assert parsed.title_block.material == "Д16 А Т ГОСТ 17232-2023"
         assert parsed.title_block.scale == "1:1"
         assert parsed.title_block.mass == "0,082"
 

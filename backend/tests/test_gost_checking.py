@@ -17,6 +17,7 @@ from app.domain.kd_review.gost_checking import (
     check_general_roughness_format,
     check_material_designation,
     check_plate_blank_sortament,
+    check_plate_material_attributes,
     check_scale,
     check_technical_requirements_numbering,
     check_title_block,
@@ -236,6 +237,42 @@ class TestCheckGeneralRoughness:
 
     def test_без_пункта_в_бд_нет_вердикта(self):
         assert check_general_roughness_format(self._with_roughness(True), ()) is None
+
+
+PLATE_ATTRIBUTE_REQUIREMENTS = (
+    GostEnumRequirement(
+        standard_designation="ГОСТ 17232-2023",
+        clause_number="3.1-плакировка",
+        parameter_name="обозначение плакировки плиты",
+        allowed_values=("А", "Б"),
+        clause_text="Нормальная плакировка обозначается А.",
+    ),
+    GostEnumRequirement(
+        standard_designation="ГОСТ 17232-2023",
+        clause_number="3.1-состояние",
+        parameter_name="обозначение состояния материала плиты",
+        allowed_values=("М", "Н1", "Н2", "Н", "Т", "Т1"),
+        clause_text="Закаленное и естественно состаренное состояние обозначается Т.",
+    ),
+)
+
+
+def test_плита_д16_а_т_разрешена_стандартом():
+    drawing = DrawingModel(
+        file_path="test.pdf",
+        page_count=1,
+        title_block=TitleBlockFields(
+            material="Д16 А Т ГОСТ 17232-2023",
+            blank_designation="Плита Д16 АТ 35x80x80 ГОСТ 17232-2023",
+        ),
+    )
+    checks = check_plate_material_attributes(
+        drawing, PLATE_ATTRIBUTE_REQUIREMENTS
+    )
+    assert [check.actual_value for check in checks] == ["А", "Т"]
+    assert all(check.status is GostCheckStatus.PASSED for check in checks)
+    assert "нормальная плакировка" in checks[0].note
+    assert "естественно состаренное" in checks[1].note
 
 
 # Сортамент плит по ГОСТ 17232-2023, таблица 1 — ровно так размечено в

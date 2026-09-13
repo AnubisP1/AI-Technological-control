@@ -22,7 +22,11 @@ from app.domain.kd_review.gost_lookup_port import (
     GostProceduralRequirement,
     GostTitleBlockField,
 )
-from app.domain.material_text import extract_plate_dimensions_mm, is_plate_blank
+from app.domain.material_text import (
+    extract_plate_dimensions_mm,
+    extract_plate_material_attributes,
+    is_plate_blank,
+)
 from app.domain.kd_review.review_model import GostCheckStatus, GostRequirementCheck
 
 # Соответствие «поле основной надписи в DrawingModel -> номер графы по
@@ -44,6 +48,70 @@ _REQUIRED = "●"
 _CONDITIONAL = "○"
 
 _ROUGHNESS_SHELF_MARKER = "полка знака шероховатости"
+_PLATE_PLATING_MARKER = "обозначение плакировки плиты"
+_PLATE_STATE_MARKER = "обозначение состояния материала плиты"
+
+
+def check_plate_material_attributes(
+    drawing: DrawingModel,
+    requirements: tuple[GostEnumRequirement, ...],
+) -> tuple[GostRequirementCheck, ...]:
+    """Плакировка и состояние плиты по ГОСТ 17232-2023, п. 3.1."""
+    blank = drawing.title_block.blank_designation
+    if not blank or "ГОСТ 17232" not in blank.upper():
+        return ()
+    attributes = extract_plate_material_attributes(blank)
+    if attributes is None:
+        return ()
+
+    checks: list[GostRequirementCheck] = []
+    attribute_specs = (
+        (
+            _PLATE_PLATING_MARKER,
+            attributes.plating,
+            "А — нормальная плакировка",
+        ),
+        (
+            _PLATE_STATE_MARKER,
+            attributes.material_state,
+            "Т — закалённое и естественно состаренное состояние",
+        ),
+    )
+    for marker, actual, explanation in attribute_specs:
+        if actual is None:
+            continue
+        requirement = next(
+            (
+                item
+                for item in requirements
+                if item.standard_designation == "ГОСТ 17232-2023"
+                and marker in item.parameter_name.lower()
+            ),
+            None,
+        )
+        if requirement is None:
+            continue
+        is_allowed = actual in requirement.allowed_values
+        checks.append(
+            GostRequirementCheck(
+                standard_designation=requirement.standard_designation,
+                clause_number=requirement.clause_number,
+                parameter_name=requirement.parameter_name,
+                status=(
+                    GostCheckStatus.PASSED
+                    if is_allowed
+                    else GostCheckStatus.VIOLATED
+                ),
+                actual_value=actual,
+                expected="; ".join(requirement.allowed_values),
+                note=(
+                    f"Обозначение «{actual}» стандартом допускается: {explanation}."
+                    if is_allowed
+                    else f"Обозначение «{actual}» нет в допустимом перечне п. 3.1."
+                ),
+            )
+        )
+    return tuple(checks)
 
 
 def check_general_roughness_format(
