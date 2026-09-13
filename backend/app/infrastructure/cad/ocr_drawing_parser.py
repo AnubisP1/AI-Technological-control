@@ -45,6 +45,14 @@ from app.infrastructure.cad.stamp_extraction import (
     extract_technical_requirements,
     extract_title_block,
 )
+from app.infrastructure.cad.stamp_cells import (
+    find_material_cell,
+    find_part_name_cell,
+    find_scale_cell,
+    read_stamp_cells,
+    recognize_designation_cell,
+    recognize_material_cell,
+)
 from app.infrastructure.cad.stamp_ocr import (
     recognize_designation,
     recognize_mass,
@@ -52,6 +60,10 @@ from app.infrastructure.cad.stamp_ocr import (
     recognize_scale,
     refine_part_name,
     _stamp_variants,
+)
+from app.infrastructure.cad.roughness_ocr import recognize_general_roughness
+from app.infrastructure.cad.technical_requirements_ocr import (
+    recognize_technical_requirements,
 )
 
 _RENDER_DPI = 400  # выше, чем для детекции видов — точность OCR зависит от разрешения
@@ -106,6 +118,14 @@ class OcrDrawingParser:
                 # терять остальные (см. докстроку функции).
                 require_first_item=False,
             )
+            # У векторных PDF без текстового слоя детализация не
+            # ограничена разрешением скана. Размеченная пользователем
+            # зона ТТ читается отдельным проходом как связный список.
+            if raster_dpi is None:
+                targeted_requirements = recognize_technical_requirements(page)
+                if targeted_requirements:
+                    requirements = targeted_requirements
+            general_roughness = recognize_general_roughness(page)
 
             return DrawingModel(
                 file_path=str(file_path),
@@ -115,6 +135,7 @@ class OcrDrawingParser:
                 raw_text=raw_text,
                 source_kind="ocr",
                 raster_dpi=raster_dpi,
+                general_roughness=general_roughness,
             )
         finally:
             document.close()
@@ -135,11 +156,28 @@ class OcrDrawingParser:
         variants = _stamp_variants(page)
         updates: dict[str, str] = {}
 
+        # Основной источник — покамерный разбор таблицы штампа: он читает
+        # графу целиком, не смешивая её с соседними (см. stamp_cells).
+        # Построчные проходы ниже остаются запасным путём.
+        cells = read_stamp_cells(page)
+
         if not title_block.material and not title_block.blank_designation:
-            row = recognize_material_row(page)
+            # Ячейка даёт верную СТРУКТУРУ графы (профиль, марка,
+            # стандарт), построчное голосование — более точные ЗНАКИ в
+            # номере стандарта. Берём лучшее от обоих: если голосование
+            # нашло материал, оно и выигрывает, иначе идёт разбор ячейки.
+            row = (
+                recognize_material_cell(page, cells)
+                or recognize_material_row(page)
+                or find_material_cell(cells)
+            )
             material = extract_material_from_blank_designation(row) if row else None
             if material:
                 updates["material"] = material
+                # Покамерный проход даёт полную графу 3 и используется
+                # для сверки толщины заготовки с сортаментом НСИ.
+                if row and re.search(r"\d+(?:[xх×]\d+){1,2}", row):
+                    updates["blank_designation"] = row
 
         # Обозначение КД по ГОСТ 2.201 содержит цифровые группы. Если
         # общий проход выдал строку без единой цифры («Tete»), это заведомо
@@ -152,7 +190,9 @@ class OcrDrawingParser:
             re.search(r"\d{3}[.\-]\d", current_designation)
         )
         if not looks_like_designation:
-            designation = recognize_designation(page, variants)
+            designation = recognize_designation_cell(page, cells) or recognize_designation(
+                page, variants
+            )
             if designation:
                 updates["designation"] = designation
 
@@ -162,16 +202,30 @@ class OcrDrawingParser:
                 updates["mass"] = mass
 
         if not title_block.scale:
-            scale = recognize_scale(page, variants)
+            scale = find_scale_cell(cells) or recognize_scale(page, variants)
             if scale:
                 updates["scale"] = scale
 
         # Наименование найдено позиционно (это надёжнее, чем искать его
         # по тексту среди фамилий и подписей соседних граф), но общий OCR
         # мог подменить кириллицу латиницей в аббревиатуре.
-        if title_block.part_name:
-            refined = refine_part_name(page, title_block.part_name)
+        # Наименование: позиционный разбор общего прохода обычно точнее в
+        # знаках, покамерный — надёжнее находит саму графу. Используем
+        # покамерный, только если позиционный не дал результата или дал
+        # его с латинскими подменами, которые не удалось исправить.
+        refined = (
+            refine_part_name(page, title_block.part_name)
+            if title_block.part_name
+            else None
+        )
+        if refined and not re.search(r"[A-Za-z]", refined):
             if refined != title_block.part_name:
+                updates["part_name"] = refined
+        else:
+            cell_name = find_part_name_cell(cells)
+            if cell_name:
+                updates["part_name"] = cell_name
+            elif refined and refined != title_block.part_name:
                 updates["part_name"] = refined
 
         return replace(title_block, **updates) if updates else title_block

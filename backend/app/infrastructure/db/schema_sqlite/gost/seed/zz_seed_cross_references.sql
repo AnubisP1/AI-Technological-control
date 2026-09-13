@@ -33,7 +33,7 @@ SELECT id, 'ГОСТ Р 2.308', 'REFERS_TO', 'Геометрические до�
 FROM gost_clause WHERE gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ Р 2.109-2023') AND clause_number = '5.10';
 
 INSERT INTO gost_clause_reference (from_clause_id, to_standard_designation, reference_type, note)
-SELECT id, 'ГОСТ 2.309', 'REFERS_TO', 'Обозначения шероховатости поверхностей на чертеже'
+SELECT id, 'ГОСТ 2.309-73', 'REFERS_TO', 'Обозначения шероховатости поверхностей на чертеже'
 FROM gost_clause WHERE gost_standard_id = (SELECT id FROM gost_standard WHERE designation = 'ГОСТ Р 2.109-2023') AND clause_number = '5.10';
 
 -- 4.6 -> форматы и масштабы

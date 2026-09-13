@@ -45,6 +45,16 @@ class RasterViewDetector:
     def _detect_regions(self, image: np.ndarray, zoom: float) -> tuple[ViewRegion, ...]:
         _, binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
+        height_px, width_px = binary.shape
+        # Рамка листа и боковая таблица изменений образуют один огромный
+        # связный компонент и могут «приклеить» к себе главный вид.
+        # Убираем только узкие стандартизованные поля по краям, не рабочее
+        # поле чертежа.
+        binary[: max(1, int(height_px * 0.02)), :] = 0
+        binary[int(height_px * 0.76) :, :] = 0
+        binary[:, : max(1, int(width_px * 0.07))] = 0
+        binary[:, int(width_px * 0.99) :] = 0
+
         kernel_size = max(3, int(min(image.shape) * _DILATE_KERNEL_FRACTION))
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
         dilated = cv2.dilate(binary, kernel, iterations=2)
@@ -54,6 +64,23 @@ class RasterViewDetector:
         regions = []
         for label in range(1, num_labels):  # label 0 — фон
             x, y, w, h, area_px = stats[label]
+            # Технические требования — широкий низкий текстовый блок над
+            # штампом; общая шероховатость — компактная область в правом
+            # верхнем углу. Оба объекта размечены отдельно и не являются
+            # видами/разрезами/сечениями.
+            is_technical_requirements = (
+                x >= width_px * 0.45
+                and y >= height_px * 0.55
+                and w >= h * 2
+            )
+            is_general_roughness = (
+                x >= width_px * 0.84
+                and y <= height_px * 0.25
+                and w <= width_px * 0.20
+            )
+            is_page_frame = w >= width_px * 0.95 or h >= height_px * 0.90
+            if is_technical_requirements or is_general_roughness or is_page_frame:
+                continue
             # Переводим обратно в пункты PDF (72 dpi), т.к. domain-модель
             # оперирует координатами листа, а не пикселями рендера.
             regions.append(

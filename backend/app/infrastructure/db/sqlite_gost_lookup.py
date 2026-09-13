@@ -16,6 +16,7 @@ from pathlib import Path
 from app.domain.kd_review.gost_lookup_port import (
     GostEnumRequirement,
     GostNumericRequirement,
+    GostProceduralRequirement,
     GostTitleBlockField,
 )
 from app.infrastructure.db.nsi_db import connect
@@ -99,6 +100,29 @@ class SqliteGostLookup:
                     fill_rule=row["fill_rule"],
                     required_paper=row["required_paper"],
                     required_electronic=row["required_electronic"],
+                )
+                for row in rows
+            )
+        finally:
+            connection.close()
+
+    def find_procedural_requirements(self) -> tuple[GostProceduralRequirement, ...]:
+        """Структурные правила с явным параметром машинной проверки."""
+        connection = connect(self._gost_db_path)
+        try:
+            rows = connection.execute(
+                "SELECT s.designation, c.clause_number, c.parameter_name, c.clause_text "
+                "FROM gost_clause c "
+                "JOIN gost_standard s ON s.id = c.gost_standard_id "
+                "WHERE c.requirement_type = 'PROCEDURAL' "
+                "  AND c.parameter_name IS NOT NULL"
+            ).fetchall()
+            return tuple(
+                GostProceduralRequirement(
+                    standard_designation=row["designation"],
+                    clause_number=row["clause_number"],
+                    parameter_name=row["parameter_name"],
+                    clause_text=row["clause_text"],
                 )
                 for row in rows
             )

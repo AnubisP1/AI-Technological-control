@@ -8,10 +8,9 @@
 основания для находок в отчёте.
 
 Возвращаются только те виды требований, которые реально проверяются
-автоматически: числовые границы, закрытые перечни значений и графы
-основной надписи. Пункты типа PROCEDURAL из БД сюда не попадают — по ним
-нельзя вынести однозначный вердикт, и делать вид, что можно, было бы
-хуже, чем честно их не проверять.
+автоматически: числовые границы, закрытые перечни значений, графы
+основной надписи и явно описанные структурные правила. PROCEDURAL-
+пункт попадает в порт только если для него есть однозначный машинный признак.
 """
 
 from __future__ import annotations
@@ -65,7 +64,18 @@ class GostTitleBlockField:
     required_electronic: str | None
 
 
+@dataclass(frozen=True)
+class GostProceduralRequirement:
+    """Структурное правило, проверяемое по распознанной геометрии."""
+
+    standard_designation: str
+    clause_number: str
+    parameter_name: str
+    clause_text: str
+
+
 class IGostLookup(Protocol):
     def find_enum_requirements(self) -> tuple[GostEnumRequirement, ...]: ...
     def find_numeric_requirements(self) -> tuple[GostNumericRequirement, ...]: ...
     def find_title_block_fields(self) -> tuple[GostTitleBlockField, ...]: ...
+    def find_procedural_requirements(self) -> tuple[GostProceduralRequirement, ...]: ...

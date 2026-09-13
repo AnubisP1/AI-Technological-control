@@ -22,7 +22,9 @@ from app.domain.material_text import normalize_grade as _normalize_grade
 
 
 def match_material(
-    material_from_drawing: str | None, known_materials: tuple[MaterialRecord, ...]
+    material_from_drawing: str | None,
+    known_materials: tuple[MaterialRecord, ...],
+    known_blanks: tuple[WorkpieceBlankRecord, ...] = (),
 ) -> MaterialCheck:
     if not material_from_drawing:
         return MaterialCheck(
@@ -42,6 +44,7 @@ def match_material(
     # поиск ещё до того, как дальше по списку нашлось бы точное
     # совпадение по марке.
     partial_match: MaterialRecord | None = None
+    grade_match: MaterialRecord | None = None
     for record in known_materials:
         record_grade = _normalize_grade(record.grade)
         record_gost = _extract_gost_number(record.gost_standard or "")
@@ -56,8 +59,32 @@ def match_material(
                 matched_gost=record.gost_standard,
                 note="Материал найден в справочнике НСИ.",
             )
+        if grade_matches and grade_match is None:
+            grade_match = record
         if (grade_matches or gost_matches) and partial_match is None:
             partial_match = record
+
+    # В основной надписи плиты может стоять ГОСТ на продукцию,
+    # а в material — ГОСТ на химический состав марки. Это не конфликт,
+    # если связанная заготовка НСИ подтверждает ту же марку и ГОСТ.
+    if grade_match is not None and gost_number is not None:
+        product_standard_confirmed = any(
+            _normalize_grade(blank.material_grade or "") == grade_part
+            and _extract_gost_number(blank.gost_standard or "") == gost_number
+            for blank in known_blanks
+        )
+        if product_standard_confirmed:
+            return MaterialCheck(
+                material_from_drawing=material_from_drawing,
+                status=MatchStatus.MATCHED,
+                matched_grade=grade_match.grade,
+                matched_gost=grade_match.gost_standard,
+                note=(
+                    "Марка найдена в НСИ; указанный на чертеже ГОСТ "
+                    "подтверждён связанной записью заготовки как стандарт "
+                    "на продукцию/сортамент."
+                ),
+            )
 
     if partial_match is not None:
         return MaterialCheck(

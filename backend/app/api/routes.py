@@ -94,7 +94,27 @@ def _get_gost_db_path() -> Path:
     ГОСТ на оформление чертежа не зависит от способа изготовления."""
     settings = get_settings()
     db_path = settings.database_dir / "gost.sqlite"
-    if not db_path.exists():
+    needs_rebuild = not db_path.exists()
+    if not needs_rebuild:
+        # gost.sqlite — генерируемый кэш seed-данных. После
+        # добавления нового машинного правила старый файл нельзя
+        # считать актуальным: иначе проверка шероховатости молча
+        # исчезнет до ручного удаления БД.
+        try:
+            connection = connect(db_path)
+            try:
+                row = connection.execute(
+                    "SELECT 1 FROM gost_clause c "
+                    "JOIN gost_standard s ON s.id = c.gost_standard_id "
+                    "WHERE s.designation = 'ГОСТ 2.309-73' "
+                    "AND c.clause_number = '1.2' LIMIT 1"
+                ).fetchone()
+                needs_rebuild = row is None
+            finally:
+                connection.close()
+        except Exception:
+            needs_rebuild = True
+    if needs_rebuild:
         build_database(NsiDatabase.GOST, db_path)
     return db_path
 
@@ -190,6 +210,18 @@ def _result_to_dict(result: KdAnalysisResult) -> dict:
                 {"number": r.number, "text": r.text}
                 for r in result.drawing.technical_requirements
             ],
+            "general_roughness": (
+                {
+                    "parameter": result.drawing.general_roughness.parameter,
+                    "value_um": result.drawing.general_roughness.value_um,
+                    "raw_text": result.drawing.general_roughness.raw_text,
+                    "has_extended_shelf": (
+                        result.drawing.general_roughness.has_extended_shelf
+                    ),
+                }
+                if result.drawing.general_roughness is not None
+                else None
+            ),
         }
 
     view_detection_json = None

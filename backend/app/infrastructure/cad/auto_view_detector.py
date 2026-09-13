@@ -23,7 +23,18 @@ class AutoViewDetector:
 
     def detect(self, file_path: Path) -> ViewDetectionResult:
         if self._has_sufficient_vector_content(file_path):
-            return self._vector_detector.detect(file_path)
+            vector_result = self._vector_detector.detect(file_path)
+            # Некоторые CAD-экспортеры группируют тысячи штрихов в
+            # несколько больших path-объектов. Формально PDF векторный,
+            # но кластеризовать bounding box таких групп невозможно.
+            if vector_result.view_count > 0:
+                return vector_result
+            raster_result = self._raster_detector.detect(file_path)
+            return ViewDetectionResult(
+                file_path=raster_result.file_path,
+                method="raster_fallback",
+                regions=raster_result.regions,
+            )
         return self._raster_detector.detect(file_path)
 
     def _has_sufficient_vector_content(self, file_path: Path) -> bool:

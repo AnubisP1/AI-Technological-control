@@ -31,6 +31,12 @@ export interface DrawingAnalysis {
   is_low_resolution_scan?: boolean
   title_block: TitleBlockFields
   technical_requirements: { number: number; text: string }[]
+  general_roughness?: {
+    parameter: string
+    value_um: number
+    raw_text: string
+    has_extended_shelf: boolean
+  } | null
 }
 
 export interface ViewDetection {

@@ -19,6 +19,7 @@ from app.domain.cad.drawing_model import DrawingModel
 from app.domain.kd_review.gost_lookup_port import (
     GostEnumRequirement,
     GostNumericRequirement,
+    GostProceduralRequirement,
     GostTitleBlockField,
 )
 from app.domain.material_text import extract_plate_dimensions_mm, is_plate_blank
@@ -41,6 +42,55 @@ _TITLE_BLOCK_FIELD_MAP: dict[str, str] = {
 # '○' — зависит от вида КД, '*' — не обязательна.
 _REQUIRED = "●"
 _CONDITIONAL = "○"
+
+_ROUGHNESS_SHELF_MARKER = "полка знака шероховатости"
+
+
+def check_general_roughness_format(
+    drawing: DrawingModel,
+    requirements: tuple[GostProceduralRequirement, ...],
+) -> GostRequirementCheck | None:
+    """Полка общего знака при наличии только параметра шероховатости."""
+    roughness = drawing.general_roughness
+    if roughness is None:
+        return None
+    requirement = next(
+        (
+            item
+            for item in requirements
+            if _ROUGHNESS_SHELF_MARKER in item.parameter_name.lower()
+        ),
+        None,
+    )
+    # Нет пункта в БД — нет и автоматического вердикта.
+    if requirement is None:
+        return None
+    actual = f"{roughness.parameter} {roughness.value_um:g}; " + (
+        "знак с длинной полкой" if roughness.has_extended_shelf else "знак без полки"
+    )
+    if roughness.has_extended_shelf:
+        return GostRequirementCheck(
+            standard_designation=requirement.standard_designation,
+            clause_number=requirement.clause_number,
+            parameter_name=requirement.parameter_name,
+            status=GostCheckStatus.VIOLATED,
+            actual_value=actual,
+            expected=requirement.clause_text,
+            note=(
+                "В правом верхнем углу распознано только значение параметра, "
+                "но знак имеет продолженную полку. Уберите полку либо укажите "
+                "на ней предусмотренные стандартом дополнительные сведения."
+            ),
+        )
+    return GostRequirementCheck(
+        standard_designation=requirement.standard_designation,
+        clause_number=requirement.clause_number,
+        parameter_name=requirement.parameter_name,
+        status=GostCheckStatus.PASSED,
+        actual_value=actual,
+        expected=requirement.clause_text,
+        note="При одном значении параметра применён знак без полки.",
+    )
 
 
 def _normalize_scale(value: str) -> str:

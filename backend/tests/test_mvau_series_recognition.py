@@ -273,8 +273,17 @@ class TestStampFieldRecovery:
         parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
         designation = parsed.title_block.designation
         assert designation is not None
-        assert designation.startswith("104759.001-")
-        assert designation.endswith(".111.020")
+        assert designation == "МВАУ.104759.001-01.111.020"
+
+    def test_основная_надпись_читается_как_отдельные_графы(self):
+        parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
+        assert parsed.title_block.part_name == "Кронштейн навески ОЧК задний"
+        assert parsed.title_block.blank_designation == (
+            "Плита Д16 АТ 35x80x80 ГОСТ 17232-2023"
+        )
+        assert parsed.title_block.material == "Д16 ГОСТ 17232-2023"
+        assert parsed.title_block.scale == "1:1"
+        assert parsed.title_block.mass == "0,082"
 
     def test_масса_нормализуется_по_госту(self):
         """На чертеже «82гр.» — граммы с точкой. ГОСТ Р 2.104 предписывает
@@ -296,4 +305,41 @@ class TestStampFieldRecovery:
         подогнано под один файл."""
         other = MVAU_ROOT / "МВАУ.104759.001-01.351.001 - Фальшпол.pdf"
         parsed = AutoDrawingParser().parse(_require(other))
-        assert parsed.title_block.designation == "104759.001-01.351.001"
+        assert parsed.title_block.designation.endswith("104759.001-01.351.001")
+
+
+class TestAnnotatedDrawingRegions:
+    """Эталон пользователя: 3 изображения, ТТ, штамп, общая шероховатость."""
+
+    def test_все_пять_пунктов_тт_распознаны_дословно(self):
+        parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
+        assert [(item.number, item.text) for item in parsed.technical_requirements] == [
+            (
+                1,
+                "Неуказанные предельные отклонения размеров, допуски формы и "
+                "расположения поверхностей по ОСТ 1 00022-80.",
+            ),
+            (2, "Острые кромки притупить."),
+            (3, "Неуказанные радиусы 4 мм."),
+            (
+                4,
+                "Покрытие: Ан.Окс/Грунтовка ЭП-0215 2 слоя, "
+                "Эмаль ЭП-140 1 слой.",
+            ),
+            (5, "Клеймить К, маркировать Ч на бирке."),
+        ]
+
+    def test_виды_и_сечение_считаются_тремя_изображениями(self):
+        from app.infrastructure.cad.auto_view_detector import AutoViewDetector
+
+        result = AutoViewDetector().detect(_require(BRACKET_SCAN))
+        assert result.view_count == 3
+        assert result.method == "raster_fallback"
+
+    def test_общая_шероховатость_извлечена_из_правого_верхнего_угла(self):
+        parsed = AutoDrawingParser().parse(_require(BRACKET_SCAN))
+        roughness = parsed.general_roughness
+        assert roughness is not None
+        assert roughness.parameter == "Ra"
+        assert roughness.value_um == 3.2
+        assert roughness.has_extended_shelf is True

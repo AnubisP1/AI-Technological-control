@@ -11,6 +11,7 @@ import logging
 
 from app.domain.cad.drawing_model import DrawingModel
 from app.domain.kd_review.gost_checking import (
+    check_general_roughness_format,
     check_material_designation,
     check_plate_blank_sortament,
     check_scale,
@@ -82,7 +83,9 @@ class KdReviewService:
         materials = self._nsi_lookup.find_materials()
         blanks = self._nsi_lookup.find_workpiece_blanks()
 
-        material_check = match_material(drawing.title_block.material, materials)
+        material_check = match_material(
+            drawing.title_block.material, materials, blanks
+        )
         blank_check = match_blank(drawing.title_block.blank_designation, blanks)
 
         tt_checks = self._check_technical_requirements(drawing)
@@ -201,6 +204,14 @@ class KdReviewService:
             if scale_check is not None:
                 checks.append(scale_check)
             checks.extend(check_title_block(drawing, self._gost_lookup.find_title_block_fields()))
+            find_procedural = getattr(
+                self._gost_lookup, "find_procedural_requirements", lambda: ()
+            )
+            roughness_check = check_general_roughness_format(
+                drawing, find_procedural()
+            )
+            if roughness_check is not None:
+                checks.append(roughness_check)
             # Сортамент заготовки (ГОСТ 17232-2023) — единственная проверка
             # не по ЕСКД: сверяет не оформление, а реальную выпускаемость
             # указанной заготовки.

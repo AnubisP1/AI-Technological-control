@@ -56,6 +56,7 @@ _SEED_FILE_ORDER: dict[NsiDatabase, list[str]] = {
         "seed_gost_2302_clauses.sql",
         "seed_gost_2305_clauses.sql",
         "seed_gost_2307_clauses.sql",
+        "seed_gost_2309_clauses.sql",
         "seed_gost_2314_clauses.sql",
         "seed_gost_2316_clauses.sql",
         "seed_gost_25142_clauses.sql",

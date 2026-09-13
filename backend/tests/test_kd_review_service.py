@@ -72,6 +72,24 @@ def test_match_material_not_found_when_drawing_has_no_material():
     assert result.status == MatchStatus.NOT_FOUND
 
 
+def test_match_material_accepts_product_standard_confirmed_by_blank():
+    materials = (MaterialRecord(grade="Д16", gost_standard="ГОСТ 4784-2019"),)
+    blanks = (
+        WorkpieceBlankRecord(
+            designation="Плита Д16 35 ГОСТ 17232-2023",
+            gost_standard="ГОСТ 17232-2023",
+            diameter_mm=None,
+            thickness_mm=35,
+            material_grade="Д16",
+        ),
+    )
+    result = match_material("Д16 ГОСТ 17232-2023", materials, blanks)
+    assert result.status == MatchStatus.MATCHED
+    assert result.matched_grade == "Д16"
+    assert result.matched_gost == "ГОСТ 4784-2019"
+    assert "стандарт на продукцию" in result.note
+
+
 def test_match_blank_partial_match_when_gost_matches_but_diameter_does_not():
     """Реальный случай из fixture 1: заготовка 'Круг 67 ГОСТ 2590-2006' —
     ГОСТ проката совпадает с seed-записью, но диаметр 67мм отсутствует

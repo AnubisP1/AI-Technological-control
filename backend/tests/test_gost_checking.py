@@ -7,8 +7,14 @@
 
 from __future__ import annotations
 
-from app.domain.cad.drawing_model import DrawingModel, TechnicalRequirement, TitleBlockFields
+from app.domain.cad.drawing_model import (
+    DrawingModel,
+    GeneralRoughness,
+    TechnicalRequirement,
+    TitleBlockFields,
+)
 from app.domain.kd_review.gost_checking import (
+    check_general_roughness_format,
     check_material_designation,
     check_plate_blank_sortament,
     check_scale,
@@ -18,6 +24,7 @@ from app.domain.kd_review.gost_checking import (
 from app.domain.kd_review.gost_lookup_port import (
     GostEnumRequirement,
     GostNumericRequirement,
+    GostProceduralRequirement,
     GostTitleBlockField,
 )
 from app.domain.kd_review.review_model import GostCheckStatus
@@ -180,6 +187,55 @@ class TestCheckMaterialDesignation:
         result = check_material_designation(_drawing(material="—"))
         assert result.status is GostCheckStatus.NEEDS_REVIEW
         assert result.actual_value is None
+
+
+ROUGHNESS_REQUIREMENTS = (
+    GostProceduralRequirement(
+        standard_designation="ГОСТ 2.309-73",
+        clause_number="1.2",
+        parameter_name=(
+            "полка знака шероховатости при указании только значения параметра"
+        ),
+        clause_text=(
+            "При применении знака без указания способа обработки его изображают "
+            "без полки."
+        ),
+    ),
+)
+
+
+class TestCheckGeneralRoughness:
+    def _with_roughness(self, has_extended_shelf: bool) -> DrawingModel:
+        return DrawingModel(
+            file_path="test.pdf",
+            page_count=1,
+            title_block=TitleBlockFields(),
+            general_roughness=GeneralRoughness(
+                parameter="Ra",
+                value_um=3.2,
+                raw_text="Ra 3,2",
+                has_extended_shelf=has_extended_shelf,
+            ),
+        )
+
+    def test_длинная_полка_при_одном_параметре_нарушение(self):
+        result = check_general_roughness_format(
+            self._with_roughness(True), ROUGHNESS_REQUIREMENTS
+        )
+        assert result is not None
+        assert result.status is GostCheckStatus.VIOLATED
+        assert result.standard_designation == "ГОСТ 2.309-73"
+        assert result.clause_number == "1.2"
+
+    def test_знак_без_полки_проходит(self):
+        result = check_general_roughness_format(
+            self._with_roughness(False), ROUGHNESS_REQUIREMENTS
+        )
+        assert result is not None
+        assert result.status is GostCheckStatus.PASSED
+
+    def test_без_пункта_в_бд_нет_вердикта(self):
+        assert check_general_roughness_format(self._with_roughness(True), ()) is None
 
 
 # Сортамент плит по ГОСТ 17232-2023, таблица 1 — ровно так размечено в

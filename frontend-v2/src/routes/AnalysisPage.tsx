@@ -235,6 +235,12 @@ export function AnalysisPage() {
                     <dd className="text-ink">{analysis.drawing.title_block.part_name || '—'}</dd>
                     <dt className="text-ink-dim">Материал</dt>
                     <dd className="text-ink">{analysis.drawing.title_block.material || '—'}</dd>
+                    <dt className="text-ink-dim">Общая шероховатость</dt>
+                    <dd className="text-ink">
+                      {analysis.drawing.general_roughness
+                        ? `${analysis.drawing.general_roughness.parameter} ${analysis.drawing.general_roughness.value_um.toLocaleString('ru-RU')} мкм`
+                        : '—'}
+                    </dd>
                   </>
                 )}
                 {analysis.view_detection && (

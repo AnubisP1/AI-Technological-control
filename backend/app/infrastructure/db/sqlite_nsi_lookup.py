@@ -43,7 +43,10 @@ class SqliteNsiLookup:
         connection = connect(self._metal_db_path)
         try:
             rows = connection.execute(
-                "SELECT designation, diameter_mm, thickness_mm FROM workpiece_blank"
+                "SELECT w.designation, w.diameter_mm, w.thickness_mm, "
+                "       m.grade AS material_grade "
+                "FROM workpiece_blank w "
+                "LEFT JOIN material m ON m.id = w.material_id"
             ).fetchall()
             result = []
             for row in rows:
@@ -54,6 +57,7 @@ class SqliteNsiLookup:
                         gost_standard=gost,
                         diameter_mm=row["diameter_mm"],
                         thickness_mm=row["thickness_mm"],
+                        material_grade=row["material_grade"],
                     )
                 )
             return tuple(result)

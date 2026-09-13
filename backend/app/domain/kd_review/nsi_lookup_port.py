@@ -42,6 +42,10 @@ class WorkpieceBlankRecord:
     # поковок остаётся None, как diameter_mm — для листа. Значение по
     # умолчанию: записи в тестах создаются без этого поля.
     thickness_mm: float | None = None
+    # Марка материала из связанной записи material. Нужна, чтобы
+    # отличать стандарт на марку (ГОСТ 4784) от стандарта на
+    # продукцию/сортамент (ГОСТ 17232).
+    material_grade: str | None = None
 
 
 class INsiLookup(Protocol):

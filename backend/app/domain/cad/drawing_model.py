@@ -36,6 +36,18 @@ class TechnicalRequirement:
     text: str
 
 
+@dataclass(frozen=True)
+class GeneralRoughness:
+    """Общее обозначение шероховатости из правого верхнего угла листа."""
+
+    parameter: str  # Ra, Rz, Rmax и т. п.
+    value_um: float
+    raw_text: str
+    # Длинная полка справа от знака. Она проверяется отдельно по
+    # ГОСТ 2.309-73, п. 1.2, когда иных указаний кроме параметра нет.
+    has_extended_shelf: bool
+
+
 # Ниже этого разрешения строка основной надписи занимает считанные
 # пиксели и не читается никаким OCR. Замерено на корпусе реальных
 # чертежей: у скана 59 DPI на лист A1 строка штампа ~12 px, и попытки
@@ -58,6 +70,7 @@ class DrawingModel:
     # Эффективное разрешение растра для сканов (точек на дюйм); None для
     # чертежей с текстовым слоем и для растров без вложенного изображения.
     raster_dpi: float | None = None
+    general_roughness: GeneralRoughness | None = None
 
     @property
     def has_text_layer(self) -> bool:
